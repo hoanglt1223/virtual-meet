@@ -8,6 +8,7 @@ mod scripting;
 mod hotkeys;
 mod commands;
 mod error;
+mod virtual;
 
 use tauri::Manager;
 use tracing_subscriber;
@@ -21,10 +22,31 @@ async fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
-            // Initialize app state and services here
+            // Initialize app state with video pipeline
+            let app_state = commands::init_state();
+            app.manage(app_state);
+
+            // Initialize virtual webcam
+            let state = app.state::<commands::AppState>();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = state.webcam.initialize().await {
+                    tracing::error!("Failed to initialize virtual webcam: {}", e);
+                } else {
+                    tracing::info!("Virtual webcam initialized successfully");
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Video pipeline commands
+            commands::init_webcam,
+            commands::start_streaming,
+            commands::stop_streaming,
+            commands::get_webcam_status,
+            commands::list_video_devices,
+            commands::validate_video_file,
+            // Legacy commands (keep for compatibility)
             commands::get_video_devices,
             commands::get_audio_devices,
             commands::load_media_library,
