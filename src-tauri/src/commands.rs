@@ -11,12 +11,17 @@ use tracing::{info, error, warn};
 
 use crate::virtual::webcam::{VirtualWebcam, VideoInfo, BufferStatus};
 use crate::virtual::microphone::VirtualMicrophone;
+use crate::virtual::VirtualDeviceState;
 use crate::audio::{AudioMetadata, AudioValidator};
 use crate::audio_processor::{AudioProcessorStats, AudioVisualizationData};
 use crate::devices::{
     DeviceEnumerator, DeviceFilter, DeviceFilterer, FullDeviceInfo,
     DeviceType, DeviceCategory, DeviceOrigin,
 };
+
+// Include virtual device commands
+mod virtual_devices;
+pub use virtual_devices::*;
 
 /// Shared application state
 pub struct AppState {
