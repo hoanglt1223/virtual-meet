@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,17 +12,15 @@ import {
   FolderOpen,
   RefreshCw,
   Trash2,
-  Settings,
   Film,
   Music,
   Image as ImageIcon,
-  Clock,
   FileText,
   AlertCircle,
   CheckCircle,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/api/dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 
 // Enhanced types matching our backend
 interface MediaFile {
@@ -158,7 +156,7 @@ export default function EnhancedMediaLibrary() {
         include_subdirectories: true,
       };
 
-      const result = await invoke("load_media_library", { request: scanRequest });
+      await invoke("load_media_library", { request: scanRequest });
 
       setScanProgress({ phase: "completed", message: "Scan completed successfully!" });
 
