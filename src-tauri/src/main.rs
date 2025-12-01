@@ -12,6 +12,7 @@ mod commands_settings;
 mod commands_hotkeys;
 mod commands_scripting;
 mod commands_recording;
+mod commands_json_dsl;
 mod error;
 mod virtual;
 mod audio;
@@ -21,6 +22,8 @@ mod media_library;
 mod metadata_extractor;
 mod thumbnail_generator;
 mod media_scanner;
+mod json_dsl;
+mod json_dsl_integration;
 
 use tauri::Manager;
 use tracing_subscriber;
@@ -67,6 +70,10 @@ async fn main() {
             // Initialize scripting state
             let scripting_state = commands_scripting::init_scripting_system();
             app.manage(scripting_state);
+
+            // Initialize JSON DSL state
+            let json_dsl_state = commands_json_dsl::create_json_dsl_state();
+            app.manage(json_dsl_state);
 
             // Initialize recording system
             let mut app_handle = app.handle();
@@ -195,6 +202,21 @@ async fn main() {
             commands_scripting::get_script,
             commands_scripting::validate_script,
             commands_scripting::get_script_templates,
+
+            // JSON DSL commands
+            commands_json_dsl::parse_json_dsl_script,
+            commands_json_dsl::save_json_dsl_script,
+            commands_json_dsl::get_json_dsl_scripts,
+            commands_json_dsl::get_json_dsl_script,
+            commands_json_dsl::delete_json_dsl_script,
+            commands_json_dsl::execute_json_dsl_script,
+            commands_json_dsl::execute_json_dsl_content,
+            commands_json_dsl::get_media_status,
+            commands_json_dsl::stop_script_execution,
+            commands_json_dsl::get_script_templates,
+            commands_json_dsl::validate_json_dsl_script,
+            commands_json_dsl::export_json_dsl_script,
+            commands_json_dsl::import_json_dsl_script,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
