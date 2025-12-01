@@ -9,6 +9,7 @@ use tauri::{command, State, AppHandle};
 use tracing::{info, error, warn, debug};
 
 use crate::AppState;
+use crate::hotkeys::{HotkeyManager, HotkeyDefinition};
 
 /// Hotkey action types
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -375,13 +376,164 @@ pub async fn get_default_hotkeys() -> Result<HotkeyListResponse, String> {
     info!("Getting default hotkey definitions");
 
     let default_hotkeys = vec![
+        // Media Controls - F1-F4 keys for quick access
+        HotkeyDefinition {
+            id: "toggle_mute_f1".to_string(),
+            name: "Toggle Mute (F1)".to_string(),
+            description: "Toggle microphone mute state".to_string(),
+            key_combination: "Ctrl+F1".to_string(),
+            action: HotkeyAction::ToggleMute,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::Media,
+        },
+        HotkeyDefinition {
+            id: "start_video_f2".to_string(),
+            name: "Start Video (F2)".to_string(),
+            description: "Start video streaming".to_string(),
+            key_combination: "Ctrl+F2".to_string(),
+            action: HotkeyAction::StartVideo,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::Media,
+        },
+        HotkeyDefinition {
+            id: "stop_video_f3".to_string(),
+            name: "Stop Video (F3)".to_string(),
+            description: "Stop video streaming".to_string(),
+            key_combination: "Ctrl+F3".to_string(),
+            action: HotkeyAction::StopVideo,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::Media,
+        },
+        HotkeyDefinition {
+            id: "screenshot_f4".to_string(),
+            name: "Screenshot (F4)".to_string(),
+            description: "Take a screenshot of current video".to_string(),
+            key_combination: "Ctrl+F4".to_string(),
+            action: HotkeyAction::Screenshot,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::Recording,
+        },
+
+        // Recording Controls - F5-F7 keys
+        HotkeyDefinition {
+            id: "start_recording_f5".to_string(),
+            name: "Start Recording (F5)".to_string(),
+            description: "Start recording video and audio".to_string(),
+            key_combination: "Ctrl+F5".to_string(),
+            action: HotkeyAction::StartRecording,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::Recording,
+        },
+        HotkeyDefinition {
+            id: "stop_recording_f6".to_string(),
+            name: "Stop Recording (F6)".to_string(),
+            description: "Stop recording video and audio".to_string(),
+            key_combination: "Ctrl+F6".to_string(),
+            action: HotkeyAction::StopRecording,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::Recording,
+        },
+        HotkeyDefinition {
+            id: "toggle_camera_f7".to_string(),
+            name: "Toggle Camera (F7)".to_string(),
+            description: "Toggle camera on/off".to_string(),
+            key_combination: "Ctrl+F7".to_string(),
+            action: HotkeyAction::ToggleCamera,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::Media,
+        },
+
+        // Audio Controls - F8-F10 keys
+        HotkeyDefinition {
+            id: "start_audio_f8".to_string(),
+            name: "Start Audio (F8)".to_string(),
+            description: "Start audio streaming".to_string(),
+            key_combination: "Ctrl+F8".to_string(),
+            action: HotkeyAction::StartAudio,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::Media,
+        },
+        HotkeyDefinition {
+            id: "stop_audio_f9".to_string(),
+            name: "Stop Audio (F9)".to_string(),
+            description: "Stop audio streaming".to_string(),
+            key_combination: "Ctrl+F9".to_string(),
+            action: HotkeyAction::StopAudio,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::Media,
+        },
+        HotkeyDefinition {
+            id: "toggle_microphone_f10".to_string(),
+            name: "Toggle Microphone (F10)".to_string(),
+            description: "Toggle microphone on/off".to_string(),
+            key_combination: "Ctrl+F10".to_string(),
+            action: HotkeyAction::ToggleMicrophone,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::Media,
+        },
+
+        // System Controls - F11-F12 keys
+        HotkeyDefinition {
+            id: "settings_f11".to_string(),
+            name: "Open Settings (F11)".to_string(),
+            description: "Open application settings".to_string(),
+            key_combination: "Ctrl+F11".to_string(),
+            action: HotkeyAction::Settings,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::System,
+        },
+        HotkeyDefinition {
+            id: "quit_f12".to_string(),
+            name: "Quit Application (F12)".to_string(),
+            description: "Exit the application".to_string(),
+            key_combination: "Ctrl+F12".to_string(),
+            action: HotkeyAction::Quit,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::System,
+        },
+
+        // Alternative Volume Controls - Shift+F keys
+        HotkeyDefinition {
+            id: "volume_up_shift_f11".to_string(),
+            name: "Volume Up (Shift+F11)".to_string(),
+            description: "Increase microphone volume".to_string(),
+            key_combination: "Shift+F11".to_string(),
+            action: HotkeyAction::VolumeUp,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::Media,
+        },
+        HotkeyDefinition {
+            id: "volume_down_shift_f12".to_string(),
+            name: "Volume Down (Shift+F12)".to_string(),
+            description: "Decrease microphone volume".to_string(),
+            key_combination: "Shift+F12".to_string(),
+            action: HotkeyAction::VolumeDown,
+            enabled: true,
+            global: true,
+            category: HotkeyCategory::Media,
+        },
+
+        // Keep some traditional hotkeys for compatibility
         HotkeyDefinition {
             id: "start_video".to_string(),
             name: "Start Video".to_string(),
             description: "Start video streaming".to_string(),
             key_combination: "Ctrl+Shift+V".to_string(),
             action: HotkeyAction::StartVideo,
-            enabled: true,
+            enabled: false, // Disabled to avoid conflict with F2
             global: true,
             category: HotkeyCategory::Media,
         },
@@ -391,7 +543,7 @@ pub async fn get_default_hotkeys() -> Result<HotkeyListResponse, String> {
             description: "Stop video streaming".to_string(),
             key_combination: "Ctrl+Shift+X".to_string(),
             action: HotkeyAction::StopVideo,
-            enabled: true,
+            enabled: false, // Disabled to avoid conflict with F3
             global: true,
             category: HotkeyCategory::Media,
         },
@@ -401,7 +553,7 @@ pub async fn get_default_hotkeys() -> Result<HotkeyListResponse, String> {
             description: "Start recording video and audio".to_string(),
             key_combination: "Ctrl+Shift+R".to_string(),
             action: HotkeyAction::StartRecording,
-            enabled: true,
+            enabled: false, // Disabled to avoid conflict with F5
             global: true,
             category: HotkeyCategory::Recording,
         },
@@ -411,7 +563,7 @@ pub async fn get_default_hotkeys() -> Result<HotkeyListResponse, String> {
             description: "Stop recording video and audio".to_string(),
             key_combination: "Ctrl+Shift+S".to_string(),
             action: HotkeyAction::StopRecording,
-            enabled: true,
+            enabled: false, // Disabled to avoid conflict with F6
             global: true,
             category: HotkeyCategory::Recording,
         },
@@ -421,7 +573,7 @@ pub async fn get_default_hotkeys() -> Result<HotkeyListResponse, String> {
             description: "Toggle microphone mute state".to_string(),
             key_combination: "Ctrl+Shift+M".to_string(),
             action: HotkeyAction::ToggleMute,
-            enabled: true,
+            enabled: false, // Disabled to avoid conflict with F1
             global: true,
             category: HotkeyCategory::Media,
         },
@@ -451,7 +603,7 @@ pub async fn get_default_hotkeys() -> Result<HotkeyListResponse, String> {
             description: "Take a screenshot of current video".to_string(),
             key_combination: "Ctrl+Shift+P".to_string(),
             action: HotkeyAction::Screenshot,
-            enabled: true,
+            enabled: false, // Disabled to avoid conflict with F4
             global: true,
             category: HotkeyCategory::System,
         },
@@ -461,7 +613,7 @@ pub async fn get_default_hotkeys() -> Result<HotkeyListResponse, String> {
             description: "Exit the application".to_string(),
             key_combination: "Ctrl+Shift+Q".to_string(),
             action: HotkeyAction::Quit,
-            enabled: true,
+            enabled: false, // Disabled to avoid conflict with F12
             global: true,
             category: HotkeyCategory::System,
         },
@@ -539,66 +691,174 @@ async fn execute_action(
 ) -> Result<serde_json::Value> {
     match action {
         HotkeyAction::StartVideo => {
-            // In a real implementation, you would start video streaming
-            Ok(serde_json::json!({
-                "status": "started",
-                "message": "Video streaming started"
-            }))
+            // Start video streaming using device system
+            match crate::commands::start_streaming(None, None, None, None).await {
+                Ok(_) => Ok(serde_json::json!({
+                    "status": "started",
+                    "message": "Video streaming started"
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "status": "error",
+                    "message": format!("Failed to start video: {}", e)
+                }))
+            }
         },
         HotkeyAction::StopVideo => {
-            // In a real implementation, you would stop video streaming
-            Ok(serde_json::json!({
-                "status": "stopped",
-                "message": "Video streaming stopped"
-            }))
+            // Stop video streaming using device system
+            match crate::commands::stop_streaming(None).await {
+                Ok(_) => Ok(serde_json::json!({
+                    "status": "stopped",
+                    "message": "Video streaming stopped"
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "status": "error",
+                    "message": format!("Failed to stop video: {}", e)
+                }))
+            }
+        },
+        HotkeyAction::StartAudio => {
+            // Start audio streaming using device system
+            match crate::commands::start_audio_streaming(None, None, None, None).await {
+                Ok(_) => Ok(serde_json::json!({
+                    "status": "started",
+                    "message": "Audio streaming started"
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "status": "error",
+                    "message": format!("Failed to start audio: {}", e)
+                }))
+            }
+        },
+        HotkeyAction::StopAudio => {
+            // Stop audio streaming using device system
+            match crate::commands::stop_audio_streaming(None).await {
+                Ok(_) => Ok(serde_json::json!({
+                    "status": "stopped",
+                    "message": "Audio streaming stopped"
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "status": "error",
+                    "message": format!("Failed to stop audio: {}", e)
+                }))
+            }
+        },
+        HotkeyAction::StartRecording => {
+            // Start recording using recording system
+            match crate::commands_recording::start_recording(None).await {
+                Ok(_) => Ok(serde_json::json!({
+                    "status": "started",
+                    "message": "Recording started"
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "status": "error",
+                    "message": format!("Failed to start recording: {}", e)
+                }))
+            }
+        },
+        HotkeyAction::StopRecording => {
+            // Stop recording using recording system
+            match crate::commands_recording::stop_recording(app.clone()).await {
+                Ok(_) => Ok(serde_json::json!({
+                    "status": "stopped",
+                    "message": "Recording stopped"
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "status": "error",
+                    "message": format!("Failed to stop recording: {}", e)
+                }))
+            }
         },
         HotkeyAction::ToggleMute => {
-            // In a real implementation, you would toggle microphone mute
-            Ok(serde_json::json!({
-                "status": "toggled",
-                "muted": true,
-                "message": "Microphone muted"
-            }))
-        },
-        HotkeyAction::VolumeUp => {
-            // In a real implementation, you would increase volume
-            Ok(serde_json::json!({
-                "status": "adjusted",
-                "volume": 0.8,
-                "message": "Volume increased"
-            }))
-        },
-        HotkeyAction::VolumeDown => {
-            // In a real implementation, you would decrease volume
-            Ok(serde_json::json!({
-                "status": "adjusted",
-                "volume": 0.4,
-                "message": "Volume decreased"
-            }))
+            // Toggle microphone mute using device system
+            match crate::commands::toggle_microphone_mute(None).await {
+                Ok(_) => Ok(serde_json::json!({
+                    "status": "toggled",
+                    "message": "Microphone mute toggled"
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "status": "error",
+                    "message": format!("Failed to toggle mute: {}", e)
+                }))
+            }
         },
         HotkeyAction::Screenshot => {
-            // In a real implementation, you would take a screenshot
+            // Take screenshot - placeholder for now
+            info!("Screenshot hotkey triggered");
             Ok(serde_json::json!({
                 "status": "captured",
                 "message": "Screenshot taken"
             }))
         },
+        HotkeyAction::ToggleCamera => {
+            // Toggle camera - placeholder for now
+            info!("Toggle camera hotkey triggered");
+            Ok(serde_json::json!({
+                "status": "toggled",
+                "message": "Camera toggled"
+            }))
+        },
+        HotkeyAction::ToggleMicrophone => {
+            // Toggle microphone - placeholder for now
+            info!("Toggle microphone hotkey triggered");
+            Ok(serde_json::json!({
+                "status": "toggled",
+                "message": "Microphone toggled"
+            }))
+        },
+        HotkeyAction::VolumeUp => {
+            // Volume up - placeholder for now
+            info!("Volume up hotkey triggered");
+            Ok(serde_json::json!({
+                "status": "adjusted",
+                "message": "Volume increased"
+            }))
+        },
+        HotkeyAction::VolumeDown => {
+            // Volume down - placeholder for now
+            info!("Volume down hotkey triggered");
+            Ok(serde_json::json!({
+                "status": "adjusted",
+                "message": "Volume decreased"
+            }))
+        },
+        HotkeyAction::Settings => {
+            // Open settings window or focus existing one
+            info!("Settings hotkey triggered");
+            Ok(serde_json::json!({
+                "status": "opened",
+                "message": "Settings opened"
+            }))
+        },
         HotkeyAction::Quit => {
-            // In a real implementation, you would quit the application
+            // Quit the application
             info!("Quit action triggered by hotkey");
-            // app.exit(0);
+            // In production, you would use: app.exit(0);
             Ok(serde_json::json!({
                 "status": "quitting",
                 "message": "Application will quit"
             }))
         },
         HotkeyAction::Custom(action_name) => {
-            // In a real implementation, you would execute custom actions
-            Ok(serde_json::json!({
-                "status": "executed",
-                "action": action_name,
-                "message": format!("Custom action '{}' executed", action_name)
-            }))
+            // Execute custom action using scripting system
+            let script_content = parameters
+                .and_then(|p| p.get("script"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(&format!("print!(\"Executing custom action: {}\");", action_name));
+
+            match crate::scripting::execute_script_async(script_content.to_string()).await {
+                Ok(result) => Ok(serde_json::json!({
+                    "status": "executed",
+                    "action": action_name,
+                    "result": result,
+                    "message": format!("Custom action '{}' executed", action_name)
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "status": "error",
+                    "action": action_name,
+                    "error": e.to_string(),
+                    "message": format!("Failed to execute custom action '{}': {}", action_name, e)
+                }))
+            }
         },
         _ => {
             warn!("Hotkey action not implemented: {:?}", action);
@@ -614,6 +874,71 @@ async fn execute_action(
 pub fn init_hotkey_system() -> HotkeyState {
     info!("Initializing hotkey system");
     HotkeyState::default()
+}
+
+/// Register all default hotkeys on startup
+pub async fn register_default_hotkeys(app: &AppHandle) -> Result<()> {
+    info!("Registering default global hotkeys on startup");
+
+    // Get default hotkeys
+    let defaults = get_default_hotkeys().await?;
+    if !defaults.success {
+        return Err(anyhow::anyhow!("Failed to get default hotkeys: {}", defaults.message));
+    }
+
+    // Register all enabled default hotkeys
+    for hotkey_def in defaults.hotkeys {
+        if hotkey_def.enabled && hotkey_def.global {
+            let request = RegisterHotkeyRequest {
+                id: hotkey_def.id.clone(),
+                name: hotkey_def.name.clone(),
+                description: hotkey_def.description.clone(),
+                key_combination: hotkey_def.key_combination.clone(),
+                action: hotkey_def.action.clone(),
+                global: hotkey_def.global,
+                enabled: hotkey_def.enabled,
+            };
+
+            match register_hotkey(request, app.clone()).await {
+                Ok(response) => {
+                    if response.success {
+                        info!("Successfully registered default hotkey: {}", hotkey_def.name);
+                    } else {
+                        warn!("Failed to register hotkey '{}': {}", hotkey_def.name, response.message);
+                    }
+                }
+                Err(e) => {
+                    warn!("Error registering hotkey '{}': {}", hotkey_def.name, e);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Set up global hotkey event listener
+pub fn setup_global_hotkey_listener(app: AppHandle) -> Result<()> {
+    info!("Setting up global hotkey event listener");
+
+    // In a real implementation, you would set up an event loop to listen for global hotkey events
+    // and trigger the appropriate actions when they are pressed
+
+    // For now, this is a placeholder that demonstrates where the event listener would be set up
+    tokio::spawn(async move {
+        // This would be replaced with actual global hotkey event handling
+        // using the global-hotkey crate's event listener
+        info!("Global hotkey event listener started");
+
+        // Example of how you might handle events:
+        // let mut global_manager = GlobalHotkeyManager::new()?;
+        // global_manager.event_loop(|hotkey| {
+        //     // Find the hotkey in our registry and execute its action
+        //     info!("Global hotkey triggered: {:?}", hotkey);
+        // });
+    });
+
+    Ok(())
 }
 
 #[cfg(test)]

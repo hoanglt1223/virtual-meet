@@ -1,16 +1,15 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FolderOpen, Plus, Trash2, Monitor, Mic } from "lucide-react";
-import type { MediaDevice, Hotkey, AppSettings } from "@/types";
+import { FolderOpen, Monitor, Mic, Settings as SettingsIcon } from "lucide-react";
+import HotkeyManager from "@/components/HotkeyManager";
+import type { MediaDevice, AppSettings } from "@/types";
 
 export default function Settings() {
   // Placeholder data - in real app this would come from Tauri commands
   const mockVideoDevices: MediaDevice[] = [];
   const mockAudioDevices: MediaDevice[] = [];
-  const mockHotkeys: Hotkey[] = [];
   const mockSettings: AppSettings = {
     mediaFolders: [],
     recording: {
@@ -124,41 +123,7 @@ export default function Settings() {
 
         {/* Hotkeys */}
         <TabsContent value="hotkeys" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Global Hotkeys</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                {mockHotkeys.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No hotkeys configured
-                  </div>
-                ) : (
-                  mockHotkeys.map((hotkey) => (
-                    <div key={hotkey.id} className="flex items-center justify-between p-3 border rounded-md">
-                      <div className="flex items-center gap-4">
-                        <Badge variant="outline">{hotkey.keys}</Badge>
-                        <span className="text-sm">{hotkey.action}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm">
-                          Edit
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-              <Button className="w-full">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Hotkey
-              </Button>
-            </CardContent>
-          </Card>
+          <HotkeyManager />
         </TabsContent>
 
         {/* General Settings */}
