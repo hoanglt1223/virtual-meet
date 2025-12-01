@@ -9,6 +9,9 @@ mod hotkeys;
 mod commands;
 mod error;
 mod virtual;
+mod audio;
+mod audio_decoder;
+mod audio_processor;
 
 use tauri::Manager;
 use tracing_subscriber;
@@ -28,11 +31,22 @@ async fn main() {
 
             // Initialize virtual webcam
             let state = app.state::<commands::AppState>();
+            let webcam_state = state.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = state.webcam.initialize().await {
+                if let Err(e) = webcam_state.webcam.initialize().await {
                     tracing::error!("Failed to initialize virtual webcam: {}", e);
                 } else {
                     tracing::info!("Virtual webcam initialized successfully");
+                }
+            });
+
+            // Initialize virtual microphone
+            let mic_state = state.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = mic_state.microphone.initialize().await {
+                    tracing::error!("Failed to initialize virtual microphone: {}", e);
+                } else {
+                    tracing::info!("Virtual microphone initialized successfully");
                 }
             });
 
@@ -46,6 +60,17 @@ async fn main() {
             commands::get_webcam_status,
             commands::list_video_devices,
             commands::validate_video_file,
+            // Audio pipeline commands
+            commands::init_microphone,
+            commands::start_audio_streaming,
+            commands::stop_audio_streaming,
+            commands::get_microphone_status,
+            commands::set_microphone_volume,
+            commands::set_microphone_muted,
+            commands::toggle_microphone_mute,
+            commands::list_audio_devices,
+            commands::validate_audio_file,
+            commands::get_supported_audio_formats,
             // Legacy commands (keep for compatibility)
             commands::get_video_devices,
             commands::get_audio_devices,

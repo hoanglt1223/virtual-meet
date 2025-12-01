@@ -7,3 +7,6 @@ pub mod recording;
 pub mod scripting;
 pub mod hotkeys;
 pub mod virtual;
+pub mod audio;
+pub mod audio_decoder;
+pub mod audio_processor;
