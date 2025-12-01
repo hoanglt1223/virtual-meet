@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FolderOpen, Monitor, Mic, Settings as SettingsIcon } from "lucide-react";
+import { FolderOpen, Monitor, Mic, Trash2, Plus } from "lucide-react";
 import HotkeyManager from "@/components/HotkeyManager";
 import type { MediaDevice, AppSettings } from "@/types";
 

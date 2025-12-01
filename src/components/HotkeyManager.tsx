@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/tauri";
+import { invoke } from "@tauri-apps/api/core";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -16,15 +15,14 @@ import {
   MicOff,
   Volume2,
   Settings as SettingsIcon,
-  Screenshot,
   Power
 } from "lucide-react";
 import type {
   Hotkey,
   HotkeyAction,
   HotkeyCategory,
-  HotkeyRegistrationRequest,
-  HotkeyRegistrationResponse
+  HotkeyRegistrationResponse,
+  HotkeyListResponse
 } from "@/types";
 
 const ACTION_ICONS = {
@@ -37,7 +35,7 @@ const ACTION_ICONS = {
   ToggleMute: { icon: MicOff, color: "text-orange-600", label: "Toggle Mute" },
   VolumeUp: { icon: Volume2, color: "text-blue-600", label: "Volume Up" },
   VolumeDown: { icon: Volume2, color: "text-blue-600", label: "Volume Down" },
-  Screenshot: { icon: Screenshot, color: "text-purple-600", label: "Screenshot" },
+  Screenshot: { icon: Camera, color: "text-purple-600", label: "Screenshot" },
   ToggleCamera: { icon: Camera, color: "text-blue-600", label: "Toggle Camera" },
   ToggleMicrophone: { icon: Mic, color: "text-orange-600", label: "Toggle Microphone" },
   Settings: { icon: SettingsIcon, color: "text-gray-600", label: "Open Settings" },
@@ -56,9 +54,7 @@ export default function HotkeyManager() {
   const [hotkeys, setHotkeys] = useState<Hotkey[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isAddingHotkey, setIsAddingHotkey] = useState(false);
-  const [editingHotkey, setEditingHotkey] = useState<Hotkey | null>(null);
-
+  
   useEffect(() => {
     loadDefaultHotkeys();
   }, []);
@@ -79,30 +75,7 @@ export default function HotkeyManager() {
     }
   };
 
-  const registerHotkey = async (hotkey: HotkeyRegistrationRequest) => {
-    try {
-      const response = await invoke<HotkeyRegistrationResponse>("register_hotkey", { request: hotkey });
-      if (response.success) {
-        // Update the hotkey in our local state to show it's registered
-        setHotkeys(prev =>
-          prev.map(h =>
-            h.id === hotkey.id
-              ? { ...h, enabled: hotkey.enabled, is_registered: true }
-              : h
-          )
-        );
-        return { success: true };
-      } else {
-        return { success: false, message: response.message };
-      }
-    } catch (err) {
-      return {
-        success: false,
-        message: err instanceof Error ? err.message : "Failed to register hotkey"
-      };
-    }
-  };
-
+  
   const toggleHotkey = async (hotkeyId: string, enabled: boolean) => {
     try {
       const response = await invoke<HotkeyRegistrationResponse>("set_hotkey_enabled", {
@@ -190,7 +163,7 @@ export default function HotkeyManager() {
               { key: "Ctrl+F1", action: "Toggle Mute", icon: MicOff },
               { key: "Ctrl+F2", action: "Start Video", icon: Play },
               { key: "Ctrl+F3", action: "Stop Video", icon: Pause },
-              { key: "Ctrl+F4", action: "Take Screenshot", icon: Screenshot },
+              { key: "Ctrl+F4", action: "Take Screenshot", icon: Camera },
               { key: "Ctrl+F5", action: "Start Recording", icon: Camera },
               { key: "Ctrl+F6", action: "Stop Recording", icon: Camera },
               { key: "Ctrl+F7", action: "Toggle Camera", icon: Camera },
@@ -271,8 +244,7 @@ export default function HotkeyManager() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setEditingHotkey(hotkey)}
-                    >
+                                          >
                       Edit
                     </Button>
                     <Button variant="outline" size="sm">
@@ -289,8 +261,7 @@ export default function HotkeyManager() {
       {/* Add Hotkey Button */}
       <Button
         className="w-full"
-        onClick={() => setIsAddingHotkey(true)}
-      >
+              >
         <Plus className="h-4 w-4 mr-2" />
         Add Custom Hotkey
       </Button>

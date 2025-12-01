@@ -8,7 +8,7 @@ import type { Recording } from "@/types";
 
 export default function Recording() {
   const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
+  const [recordingTime] = useState(0);
 
   // Placeholder data - in real app this would come from Tauri commands
   const mockRecordings: Recording[] = [];
