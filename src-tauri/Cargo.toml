@@ -31,6 +31,14 @@ rodio = { workspace = true }
 # Windows-specific
 windows = { workspace = true }
 
+# Virtual Audio
+cpal = { workspace = true }
+symphonia = { workspace = true }
+
+# Virtual Video
+windows-capture = { workspace = true }
+image = { workspace = true }
+
 # Scripting
 rhai = { workspace = true }
 
