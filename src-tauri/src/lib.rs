@@ -1,5 +1,6 @@
 // Commands and utilities for VirtualMeet
 pub mod commands;
+pub mod commands_recording;
 pub mod error;
 pub mod media;
 pub mod devices;

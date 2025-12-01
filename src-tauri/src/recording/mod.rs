@@ -1,13 +1,13 @@
-//! Recording Module - Public Interface
+//! Recording Module
 //!
-//! This module provides the main recording interface for the application.
+//! Combined audio/video recording pipeline with configurable quality settings,
+//! proper A/V synchronization, and MP4 output support.
 
 pub mod combined_recorder;
 pub mod config;
 pub mod av_sync;
 pub mod mp4_muxer;
 
-// Re-export public API
 pub use combined_recorder::{
     CombinedRecorder, AVFrame, VideoFrameData, VideoFormat,
     RecordingState, RecordingSession, RecordingStats,
