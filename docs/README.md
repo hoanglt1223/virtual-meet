@@ -46,33 +46,9 @@ pnpm tauri build
 5. Add media files to your library
 6. Select video/audio and start using in meeting apps
 
-## Documentation
-
-- **[Development Setup Guide](docs/DEVELOPMENT_SETUP.md)** - Complete environment setup
-- **[Requirements](docs/requirements.md)** - Business and technical requirements
-- **[Architecture](docs/architecture.md)** - Technical architecture overview
-- **[Tauri v2 Migration](docs/TAURI_V2_MIGRATION.md)** - Migration notes from v1 to v2
-- **[Project Structure](docs/)** - Detailed project documentation
-
 ## Project Status
 
 🚧 **In Development** - Core infrastructure and architecture planning phase
-
-## Task Management
-
-This project uses vibe-kanban for task management. Current development progress is tracked through the kanban board with 11 core tasks covering:
-
-1. Set up Development Environment ⏳
-2. Implement Video Pipeline Foundation
-3. Implement Audio Pipeline Foundation
-4. Device Enumeration System
-5. Virtual Device Integration
-6. Combined Recording Pipeline
-7. Tauri Command API Layer
-8. Media Library Scanning
-9. Dashboard UI with Video Preview
-10. Global Hotkey System
-11. JSON/DSL Scripting Engine
 
 ## License
 
