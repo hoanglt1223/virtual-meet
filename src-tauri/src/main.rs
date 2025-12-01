@@ -71,6 +71,15 @@ async fn main() {
             commands::list_audio_devices,
             commands::validate_audio_file,
             commands::get_supported_audio_formats,
+            // Device enumeration commands
+            commands::enumerate_all_devices,
+            commands::enumerate_audio_devices,
+            commands::enumerate_video_devices,
+            commands::get_device_capabilities,
+            commands::is_device_virtual,
+            commands::get_virtual_devices,
+            commands::get_physical_devices,
+            commands::refresh_device_list,
             // Legacy commands (keep for compatibility)
             commands::get_video_devices,
             commands::get_audio_devices,
