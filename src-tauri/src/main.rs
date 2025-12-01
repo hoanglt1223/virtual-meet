@@ -17,6 +17,10 @@ mod virtual;
 mod audio;
 mod audio_decoder;
 mod audio_processor;
+mod media_library;
+mod metadata_extractor;
+mod thumbnail_generator;
+mod media_scanner;
 
 use tauri::Manager;
 use tracing_subscriber;
@@ -127,12 +131,15 @@ async fn main() {
             commands::virtual_devices::get_microphone_buffer_status,
 
             // Media control commands
+            commands_media::initialize_media_library,
             commands_media::load_media_library,
             commands_media::set_current_video,
             commands_media::set_current_audio,
             commands_media::get_supported_media_formats,
             commands_media::search_media_library,
+            commands_media::search_media_library_enhanced,
             commands_media::get_media_library_status,
+            commands_media::cleanup_media_library,
 
             // Recording commands (from commands_recording module)
             commands_recording::start_recording,

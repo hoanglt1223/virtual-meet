@@ -11,6 +11,10 @@ use tracing::{info, error, warn, debug};
 use crate::AppState;
 use crate::audio::AudioMetadata;
 use crate::virtual::VideoInfo;
+use crate::media_library::{MediaLibraryDatabase, LibraryStats, SearchFilter};
+use crate::media_scanner::{MediaScanner, ScannerConfig, ScanResult};
+use std::sync::Arc;
+use std::path::PathBuf;
 
 /// Media file information
 #[derive(Debug, Serialize, Clone)]
@@ -160,73 +164,101 @@ pub struct MediaSearchResponse {
     pub search_time_ms: u64,
 }
 
-/// Load media library
+/// Initialize media library database and scanner
+#[command]
+pub async fn initialize_media_library() -> Result<String, String> {
+    info!("Initializing media library database");
+
+    // Get app data directory
+    let app_data_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::env::current_dir().unwrap())
+        .join("vibe-kanban");
+
+    // Create directories
+    let db_dir = app_data_dir.join("database");
+    let thumb_dir = app_data_dir.join("thumbnails");
+
+    if let Err(e) = tokio::fs::create_dir_all(&db_dir).await {
+        return Err(format!("Failed to create database directory: {}", e));
+    }
+
+    if let Err(e) = tokio::fs::create_dir_all(&thumb_dir).await {
+        return Err(format!("Failed to create thumbnail directory: {}", e));
+    }
+
+    let db_path = db_dir.join("media_library.db");
+
+    // Initialize database
+    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir).await
+        .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    info!("Media library initialized successfully at: {}", db_path.display());
+    Ok(db_path.to_string_lossy().to_string())
+}
+
+/// Enhanced load media library using new scanner
 #[command]
 pub async fn load_media_library(
     request: LoadMediaLibraryRequest,
-    state: State<'_, AppState>,
 ) -> Result<MediaLibraryScanResponse, String> {
     info!("Loading media library from: {}", request.library_path);
 
     let start_time = std::time::Instant::now();
-    let library_path = Path::new(&request.library_path);
 
-    if !library_path.exists() {
+    // Initialize database
+    let db_result = initialize_media_library().await;
+    if let Err(e) = db_result {
         return Ok(MediaLibraryScanResponse {
             success: false,
-            message: format!("Library path does not exist: {}", request.library_path),
+            message: format!("Failed to initialize media library: {}", e),
             scanned_paths: vec![],
             found_files: vec![],
-            errors: vec![],
+            errors: vec![e],
             scan_duration_ms: start_time.elapsed().as_millis() as u64,
             total_files_found: 0,
             total_size_bytes: 0,
         });
     }
 
-    let mut found_files = Vec::new();
-    let mut errors = Vec::new();
-    let mut scanned_paths = Vec::new();
+    // Set up database
+    let app_data_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::env::current_dir().unwrap())
+        .join("vibe-kanban");
+    let db_path = app_data_dir.join("database").join("media_library.db");
+    let thumb_dir = app_data_dir.join("thumbnails");
 
-    // Scan for media files
-    if let Err(e) = scan_directory_for_media(
-        library_path,
-        request.include_subdirectories,
-        &mut found_files,
-        &mut errors,
-        &mut scanned_paths,
-    ) {
-        error!("Failed to scan media library: {}", e);
-        return Ok(MediaLibraryScanResponse {
-            success: false,
-            message: format!("Failed to scan library: {}", e),
-            scanned_paths,
-            found_files,
-            errors,
-            scan_duration_ms: start_time.elapsed().as_millis() as u64,
-            total_files_found: 0,
-            total_size_bytes: 0,
-        });
-    }
+    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir).await
+        .map_err(|e| format!("Failed to initialize database: {}", e))?;
+    let database = Arc::new(database);
 
-    let total_size_bytes: u64 = found_files.iter().map(|f| f.size).sum();
-    let total_files_found = found_files.len();
+    // Create scanner
+    let scanner_config = ScannerConfig::default();
+    let scanner = MediaScanner::new(database.clone(), scanner_config);
 
-    info!(
-        "Media library scan completed: {} files found, {} total size",
-        total_files_found,
-        format_bytes(total_size_bytes)
-    );
+    // Convert request to scan request
+    let scan_request = MediaLibraryScanRequest {
+        paths: vec![request.library_path.clone()],
+        recursive: request.include_subdirectories,
+        include_patterns: None,
+        exclude_patterns: None,
+        generate_thumbnails: true,
+    };
 
+    // Perform scan
+    let scan_result = scanner.scan_library(scan_request).await
+        .map_err(|e| format!("Scan failed: {}", e))?;
+
+    // Convert to response
     Ok(MediaLibraryScanResponse {
-        success: true,
-        message: format!("Successfully loaded {} media files", total_files_found),
-        scanned_paths,
-        found_files,
-        errors,
-        scan_duration_ms: start_time.elapsed().as_millis() as u64,
-        total_files_found,
-        total_size_bytes,
+        success: !scan_result.files_found.is_empty() || scan_result.errors.is_empty(),
+        message: format!("Scan completed: {} files found, {} errors",
+                        scan_result.total_files, scan_result.errors.len()),
+        scanned_paths: scan_result.scanned_paths,
+        found_files: scan_result.files_found,
+        errors: scan_result.errors,
+        scan_duration_ms: scan_result.scan_duration_ms,
+        total_files_found: scan_result.total_files,
+        total_size_bytes: scan_result.total_size_bytes,
     })
 }
 
@@ -394,21 +426,183 @@ pub async fn search_media_library(
 pub async fn get_media_library_status() -> Result<MediaLibraryStatusResponse, String> {
     info!("Getting media library status");
 
-    // This is a placeholder implementation
-    // In a real implementation, you would return the current library status
+    // Initialize database
+    let db_result = initialize_media_library().await;
+    if let Err(e) = db_result {
+        return Ok(MediaLibraryStatusResponse {
+            success: false,
+            total_files: 0,
+            total_size_bytes: 0,
+            media_counts: MediaCounts {
+                video_files: 0,
+                audio_files: 0,
+                image_files: 0,
+                other_files: 0,
+            },
+            last_scan_time: None,
+            library_paths: vec![],
+        });
+    }
+
+    // Set up database
+    let app_data_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::env::current_dir().unwrap())
+        .join("vibe-kanban");
+    let db_path = app_data_dir.join("database").join("media_library.db");
+    let thumb_dir = app_data_dir.join("thumbnails");
+
+    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir).await
+        .map_err(|e| format!("Failed to connect to database: {}", e))?;
+
+    // Get library statistics
+    let stats = database.get_library_stats().await
+        .map_err(|e| format!("Failed to get library stats: {}", e))?;
+
+    // Get scan history
+    let scan_history = database.get_scan_history(Some(1)).await
+        .map_err(|e| format!("Failed to get scan history: {}", e))?;
+
+    let last_scan_time = scan_history.first()
+        .map(|h| h.scan_time.to_rfc3339());
+
     Ok(MediaLibraryStatusResponse {
         success: true,
-        total_files: 0,
-        total_size_bytes: 0,
+        total_files: stats.total_files,
+        total_size_bytes: stats.total_size,
         media_counts: MediaCounts {
-            video_files: 0,
-            audio_files: 0,
-            image_files: 0,
-            other_files: 0,
+            video_files: stats.video_files,
+            audio_files: stats.audio_files,
+            image_files: stats.image_files,
+            other_files: stats.total_files - stats.video_files - stats.audio_files - stats.image_files,
         },
-        last_scan_time: None,
-        library_paths: vec![],
+        last_scan_time,
+        library_paths: vec![], // TODO: Store library paths in database
     })
+}
+
+/// Search media library with enhanced filters
+#[command]
+pub async fn search_media_library_enhanced(
+    request: MediaSearchRequest,
+) -> Result<MediaSearchResponse, String> {
+    info!("Searching media library with enhanced filters");
+
+    // Initialize database
+    let db_result = initialize_media_library().await;
+    if let Err(e) = db_result {
+        return Ok(MediaSearchResponse {
+            success: false,
+            results: vec![],
+            total_matches: 0,
+            search_time_ms: 0,
+        });
+    }
+
+    // Set up database
+    let app_data_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::env::current_dir().unwrap())
+        .join("vibe-kanban");
+    let db_path = app_data_dir.join("database").join("media_library.db");
+    let thumb_dir = app_data_dir.join("thumbnails");
+
+    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir).await
+        .map_err(|e| format!("Failed to connect to database: {}", e))?;
+
+    let start_time = std::time::Instant::now();
+
+    // Convert search request to filter
+    let filter = SearchFilter {
+        query: if request.query.is_empty() { None } else { Some(request.query) },
+        file_types: request.file_types,
+        min_duration: None,
+        max_duration: None,
+        min_size: None,
+        max_size: None,
+        tags: None,
+        limit: request.max_results.map(|r| r as i64),
+        offset: None,
+    };
+
+    // Perform search
+    let db_results = database.search_media_files(&filter).await
+        .map_err(|e| format!("Search failed: {}", e))?;
+
+    // Convert to MediaFileInfo
+    let mut results = Vec::new();
+    for db_file in db_results {
+        // Parse metadata JSON
+        let metadata = if let Some(metadata_str) = &db_file.metadata {
+            serde_json::from_str(metadata_str).ok()
+        } else {
+            None
+        };
+
+        let media_info = MediaFileInfo {
+            path: db_file.path,
+            name: db_file.filename,
+            file_type: match db_file.file_type.as_str() {
+                "Video" => MediaType::Video,
+                "Audio" => MediaType::Audio,
+                "Image" => MediaType::Image,
+                _ => MediaType::Unknown,
+            },
+            size: db_file.size as u64,
+            duration: db_file.duration,
+            metadata: metadata.unwrap_or_else(|| MediaMetadata {
+                video_info: None,
+                audio_info: None,
+                format_info: FormatInfo {
+                    format_name: "unknown".to_string(),
+                    duration: db_file.duration,
+                    bit_rate: db_file.bit_rate.map(|b| b as u64),
+                    file_size: db_file.size as u64,
+                },
+            }),
+            thumbnail_path: db_file.thumbnail_path,
+            last_modified: db_file.modified_at.to_rfc3339(),
+            created: db_file.created_at.to_rfc3339(),
+        };
+
+        results.push(media_info);
+    }
+
+    let total_matches = results.len();
+    let search_time_ms = start_time.elapsed().as_millis() as u64;
+
+    Ok(MediaSearchResponse {
+        success: true,
+        results,
+        total_matches,
+        search_time_ms,
+    })
+}
+
+/// Clean up orphaned thumbnails and database entries
+#[command]
+pub async fn cleanup_media_library() -> Result<String, String> {
+    info!("Cleaning up media library");
+
+    // Initialize database
+    let db_result = initialize_media_library().await;
+    if let Err(e) = db_result {
+        return Err(format!("Failed to initialize media library: {}", e));
+    }
+
+    // Set up database
+    let app_data_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::env::current_dir().unwrap())
+        .join("vibe-kanban");
+    let db_path = app_data_dir.join("database").join("media_library.db");
+    let thumb_dir = app_data_dir.join("thumbnails");
+
+    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir).await
+        .map_err(|e| format!("Failed to connect to database: {}", e))?;
+
+    // Clean up orphaned thumbnails
+    let removed_thumbnails = database.cleanup_orphaned_thumbnails().await
+        .map_err(|e| format!("Failed to cleanup thumbnails: {}", e))?;
+
+    Ok(format!("Cleanup completed. Removed {} orphaned thumbnails.", removed_thumbnails))
 }
 
 /// Validate media file
