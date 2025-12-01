@@ -3,11 +3,28 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint:fix": "eslint . --ext ts,tsx --fix",
+    "type-check": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "clean:all": "rimraf dist node_modules/.cache",
+    "reinstall": "rimraf node_modules pnpm-lock.yaml && pnpm install",
+    "up": "pnpm update",
+    "outdated": "pnpm outdated",
+    "audit": "pnpm audit",
+    "audit:fix": "pnpm audit --fix"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.4",
