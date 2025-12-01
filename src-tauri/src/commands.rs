@@ -13,11 +13,16 @@ use crate::virtual::webcam::{VirtualWebcam, VideoInfo, BufferStatus};
 use crate::virtual::microphone::VirtualMicrophone;
 use crate::audio::{AudioMetadata, AudioValidator};
 use crate::audio_processor::{AudioProcessorStats, AudioVisualizationData};
+use crate::devices::{
+    DeviceEnumerator, DeviceFilter, DeviceFilterer, FullDeviceInfo,
+    DeviceType, DeviceCategory, DeviceOrigin,
+};
 
 /// Shared application state
 pub struct AppState {
     pub webcam: Arc<VirtualWebcam>,
     pub microphone: Arc<VirtualMicrophone>,
+    pub device_enumerator: Arc<DeviceEnumerator>,
 }
 
 /// Initialize the application state
@@ -25,6 +30,7 @@ pub fn init_state() -> AppState {
     AppState {
         webcam: Arc::new(VirtualWebcam::new()),
         microphone: Arc::new(VirtualMicrophone::new()),
+        device_enumerator: Arc::new(DeviceEnumerator::new()),
     }
 }
 
@@ -83,6 +89,51 @@ pub struct AudioMetadataResponse {
     pub success: bool,
     pub message: String,
     pub metadata: Option<AudioMetadata>,
+}
+
+/// Device enumeration filter request
+#[derive(Debug, Deserialize)]
+pub struct DeviceFilterRequest {
+    pub device_type: Option<String>,
+    pub category: Option<String>,
+    pub origin: Option<String>,
+    pub available_only: Option<bool>,
+    pub virtual_only: Option<bool>,
+    pub physical_only: Option<bool>,
+    pub driver_contains: Option<String>,
+    pub name_contains: Option<String>,
+}
+
+/// Device enumeration response
+#[derive(Debug, Serialize)]
+pub struct DeviceEnumerationResponse {
+    pub success: bool,
+    pub message: String,
+    pub devices: Vec<FullDeviceInfo>,
+    pub total_count: usize,
+    pub virtual_count: usize,
+    pub physical_count: usize,
+    pub audio_count: usize,
+    pub video_count: usize,
+    pub timestamp: String,
+}
+
+/// Device capability response
+#[derive(Debug, Serialize)]
+pub struct DeviceCapabilityResponse {
+    pub success: bool,
+    pub message: String,
+    pub device_id: String,
+    pub capabilities: Option<crate::devices::DeviceCapabilities>,
+}
+
+/// Device virtual status response
+#[derive(Debug, Serialize)]
+pub struct DeviceVirtualStatusResponse {
+    pub success: bool,
+    pub message: String,
+    pub device_id: String,
+    pub is_virtual: Option<bool>,
 }
 
 /// Audio status response
@@ -485,4 +536,429 @@ pub async fn get_supported_audio_formats() -> Result<DevicesResponse, String> {
         success: true,
         devices: formats,
     })
+}
+
+// ============================================================================
+// DEVICE ENUMERATION COMMANDS
+// ============================================================================
+
+/// Enumerate all available devices (audio and video)
+#[tauri::command]
+pub async fn enumerate_all_devices(
+    filter: Option<DeviceFilterRequest>,
+    state: State<'_, AppState>
+) -> Result<DeviceEnumerationResponse, String> {
+    info!("Enumerating all devices");
+
+    match state.device_enumerator.enumerate_all_devices().await {
+        Ok(mut enumeration_result) => {
+            // Apply filter if provided
+            let devices = if let Some(filter_request) = filter {
+                let filter = convert_filter_request(filter_request);
+                DeviceFilterer::filter_devices(&enumeration_result.devices, &filter)
+                    .into_iter()
+                    .cloned()
+                    .collect()
+            } else {
+                enumeration_result.devices.clone()
+            };
+
+            let virtual_count = devices.iter().filter(|d| d.info.is_virtual()).count();
+            let physical_count = devices.iter().filter(|d| d.info.is_physical()).count();
+            let audio_count = devices.iter().filter(|d| d.info.device_type == DeviceType::Audio).count();
+            let video_count = devices.iter().filter(|d| d.info.device_type == DeviceType::Video).count();
+
+            Ok(DeviceEnumerationResponse {
+                success: true,
+                message: format!("Successfully enumerated {} devices", devices.len()),
+                devices,
+                total_count: devices.len(),
+                virtual_count,
+                physical_count,
+                audio_count,
+                video_count,
+                timestamp: enumeration_result.timestamp.to_rfc3339(),
+            })
+        },
+        Err(e) => {
+            error!("Failed to enumerate devices: {}", e);
+            Ok(DeviceEnumerationResponse {
+                success: false,
+                message: format!("Failed to enumerate devices: {}", e),
+                devices: vec![],
+                total_count: 0,
+                virtual_count: 0,
+                physical_count: 0,
+                audio_count: 0,
+                video_count: 0,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            })
+        }
+    }
+}
+
+/// Enumerate audio devices only
+#[tauri::command]
+pub async fn enumerate_audio_devices(
+    filter: Option<DeviceFilterRequest>,
+    state: State<'_, AppState>
+) -> Result<DeviceEnumerationResponse, String> {
+    info!("Enumerating audio devices");
+
+    match state.device_enumerator.enumerate_audio_devices().await {
+        Ok(mut enumeration_result) => {
+            // Apply filter if provided
+            let devices = if let Some(filter_request) = filter {
+                let filter = convert_filter_request(filter_request);
+                DeviceFilterer::filter_devices(&enumeration_result.devices, &filter)
+                    .into_iter()
+                    .cloned()
+                    .collect()
+            } else {
+                enumeration_result.devices.clone()
+            };
+
+            let virtual_count = devices.iter().filter(|d| d.info.is_virtual()).count();
+            let physical_count = devices.iter().filter(|d| d.info.is_physical()).count();
+
+            Ok(DeviceEnumerationResponse {
+                success: true,
+                message: format!("Successfully enumerated {} audio devices", devices.len()),
+                devices,
+                total_count: devices.len(),
+                virtual_count,
+                physical_count,
+                audio_count: devices.len(),
+                video_count: 0,
+                timestamp: enumeration_result.timestamp.to_rfc3339(),
+            })
+        },
+        Err(e) => {
+            error!("Failed to enumerate audio devices: {}", e);
+            Ok(DeviceEnumerationResponse {
+                success: false,
+                message: format!("Failed to enumerate audio devices: {}", e),
+                devices: vec![],
+                total_count: 0,
+                virtual_count: 0,
+                physical_count: 0,
+                audio_count: 0,
+                video_count: 0,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            })
+        }
+    }
+}
+
+/// Enumerate video devices only
+#[tauri::command]
+pub async fn enumerate_video_devices(
+    filter: Option<DeviceFilterRequest>,
+    state: State<'_, AppState>
+) -> Result<DeviceEnumerationResponse, String> {
+    info!("Enumerating video devices");
+
+    match state.device_enumerator.enumerate_video_devices().await {
+        Ok(mut enumeration_result) => {
+            // Apply filter if provided
+            let devices = if let Some(filter_request) = filter {
+                let filter = convert_filter_request(filter_request);
+                DeviceFilterer::filter_devices(&enumeration_result.devices, &filter)
+                    .into_iter()
+                    .cloned()
+                    .collect()
+            } else {
+                enumeration_result.devices.clone()
+            };
+
+            let virtual_count = devices.iter().filter(|d| d.info.is_virtual()).count();
+            let physical_count = devices.iter().filter(|d| d.info.is_physical()).count();
+
+            Ok(DeviceEnumerationResponse {
+                success: true,
+                message: format!("Successfully enumerated {} video devices", devices.len()),
+                devices,
+                total_count: devices.len(),
+                virtual_count,
+                physical_count,
+                audio_count: 0,
+                video_count: devices.len(),
+                timestamp: enumeration_result.timestamp.to_rfc3339(),
+            })
+        },
+        Err(e) => {
+            error!("Failed to enumerate video devices: {}", e);
+            Ok(DeviceEnumerationResponse {
+                success: false,
+                message: format!("Failed to enumerate video devices: {}", e),
+                devices: vec![],
+                total_count: 0,
+                virtual_count: 0,
+                physical_count: 0,
+                audio_count: 0,
+                video_count: 0,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            })
+        }
+    }
+}
+
+/// Get device capabilities
+#[tauri::command]
+pub async fn get_device_capabilities(
+    device_id: String,
+    state: State<'_, AppState>
+) -> Result<DeviceCapabilityResponse, String> {
+    info!("Getting capabilities for device: {}", device_id);
+
+    match state.device_enumerator.get_device_capabilities(&device_id).await {
+        Ok(capabilities) => {
+            Ok(DeviceCapabilityResponse {
+                success: true,
+                message: format!("Successfully retrieved capabilities for device: {}", device_id),
+                device_id,
+                capabilities: Some(capabilities),
+            })
+        },
+        Err(e) => {
+            error!("Failed to get device capabilities: {}", e);
+            Ok(DeviceCapabilityResponse {
+                success: false,
+                message: format!("Failed to get device capabilities: {}", e),
+                device_id,
+                capabilities: None,
+            })
+        }
+    }
+}
+
+/// Check if a device is virtual
+#[tauri::command]
+pub async fn is_device_virtual(
+    device_id: String,
+    state: State<'_, AppState>
+) -> Result<DeviceVirtualStatusResponse, String> {
+    info!("Checking virtual status for device: {}", device_id);
+
+    match state.device_enumerator.is_virtual_device(&device_id).await {
+        Ok(is_virtual) => {
+            Ok(DeviceVirtualStatusResponse {
+                success: true,
+                message: format!("Device {} virtual status: {}", device_id, is_virtual),
+                device_id,
+                is_virtual: Some(is_virtual),
+            })
+        },
+        Err(e) => {
+            error!("Failed to check device virtual status: {}", e);
+            Ok(DeviceVirtualStatusResponse {
+                success: false,
+                message: format!("Failed to check device virtual status: {}", e),
+                device_id,
+                is_virtual: None,
+            })
+        }
+    }
+}
+
+/// Get virtual devices only
+#[tauri::command]
+pub async fn get_virtual_devices(
+    device_type: Option<String>,
+    state: State<'_, AppState>
+) -> Result<DeviceEnumerationResponse, String> {
+    info!("Getting virtual devices");
+
+    match state.device_enumerator.enumerate_all_devices().await {
+        Ok(enumeration_result) => {
+            let mut virtual_devices = enumeration_result.get_virtual_devices()
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>();
+
+            // Filter by device type if specified
+            if let Some(device_type_str) = device_type {
+                if let Ok(device_type) = parse_device_type(&device_type_str) {
+                    virtual_devices.retain(|d| d.info.device_type == device_type);
+                }
+            }
+
+            let audio_count = virtual_devices.iter().filter(|d| d.info.device_type == DeviceType::Audio).count();
+            let video_count = virtual_devices.iter().filter(|d| d.info.device_type == DeviceType::Video).count();
+
+            Ok(DeviceEnumerationResponse {
+                success: true,
+                message: format!("Found {} virtual devices", virtual_devices.len()),
+                devices: virtual_devices,
+                total_count: virtual_devices.len(),
+                virtual_count: virtual_devices.len(),
+                physical_count: 0,
+                audio_count,
+                video_count,
+                timestamp: enumeration_result.timestamp.to_rfc3339(),
+            })
+        },
+        Err(e) => {
+            error!("Failed to get virtual devices: {}", e);
+            Ok(DeviceEnumerationResponse {
+                success: false,
+                message: format!("Failed to get virtual devices: {}", e),
+                devices: vec![],
+                total_count: 0,
+                virtual_count: 0,
+                physical_count: 0,
+                audio_count: 0,
+                video_count: 0,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            })
+        }
+    }
+}
+
+/// Get physical devices only
+#[tauri::command]
+pub async fn get_physical_devices(
+    device_type: Option<String>,
+    state: State<'_, AppState>
+) -> Result<DeviceEnumerationResponse, String> {
+    info!("Getting physical devices");
+
+    match state.device_enumerator.enumerate_all_devices().await {
+        Ok(enumeration_result) => {
+            let mut physical_devices = enumeration_result.get_physical_devices()
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>();
+
+            // Filter by device type if specified
+            if let Some(device_type_str) = device_type {
+                if let Ok(device_type) = parse_device_type(&device_type_str) {
+                    physical_devices.retain(|d| d.info.device_type == device_type);
+                }
+            }
+
+            let audio_count = physical_devices.iter().filter(|d| d.info.device_type == DeviceType::Audio).count();
+            let video_count = physical_devices.iter().filter(|d| d.info.device_type == DeviceType::Video).count();
+
+            Ok(DeviceEnumerationResponse {
+                success: true,
+                message: format!("Found {} physical devices", physical_devices.len()),
+                devices: physical_devices,
+                total_count: physical_devices.len(),
+                virtual_count: 0,
+                physical_count: physical_devices.len(),
+                audio_count,
+                video_count,
+                timestamp: enumeration_result.timestamp.to_rfc3339(),
+            })
+        },
+        Err(e) => {
+            error!("Failed to get physical devices: {}", e);
+            Ok(DeviceEnumerationResponse {
+                success: false,
+                message: format!("Failed to get physical devices: {}", e),
+                devices: vec![],
+                total_count: 0,
+                virtual_count: 0,
+                physical_count: 0,
+                audio_count: 0,
+                video_count: 0,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            })
+        }
+    }
+}
+
+/// Refresh device list
+#[tauri::command]
+pub async fn refresh_device_list(
+    device_type: Option<String>,
+    state: State<'_, AppState>
+) -> Result<DeviceEnumerationResponse, String> {
+    info!("Refreshing device list");
+
+    let result = match device_type.as_deref() {
+        Some("audio") => state.device_enumerator.enumerate_audio_devices().await,
+        Some("video") => state.device_enumerator.enumerate_video_devices().await,
+        _ => state.device_enumerator.enumerate_all_devices().await,
+    };
+
+    match result {
+        Ok(enumeration_result) => {
+            let devices = enumeration_result.devices;
+            let virtual_count = devices.iter().filter(|d| d.info.is_virtual()).count();
+            let physical_count = devices.iter().filter(|d| d.info.is_physical()).count();
+            let audio_count = devices.iter().filter(|d| d.info.device_type == DeviceType::Audio).count();
+            let video_count = devices.iter().filter(|d| d.info.device_type == DeviceType::Video).count();
+
+            Ok(DeviceEnumerationResponse {
+                success: true,
+                message: "Device list refreshed successfully".to_string(),
+                devices,
+                total_count: devices.len(),
+                virtual_count,
+                physical_count,
+                audio_count,
+                video_count,
+                timestamp: enumeration_result.timestamp.to_rfc3339(),
+            })
+        },
+        Err(e) => {
+            error!("Failed to refresh device list: {}", e);
+            Ok(DeviceEnumerationResponse {
+                success: false,
+                message: format!("Failed to refresh device list: {}", e),
+                devices: vec![],
+                total_count: 0,
+                virtual_count: 0,
+                physical_count: 0,
+                audio_count: 0,
+                video_count: 0,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            })
+        }
+    }
+}
+
+/// Helper function to convert filter request to internal filter type
+fn convert_filter_request(request: DeviceFilterRequest) -> DeviceFilter {
+    DeviceFilter {
+        device_type: request.device_type.and_then(|s| parse_device_type(&s).ok()),
+        category: request.category.and_then(|s| parse_device_category(&s).ok()),
+        origin: request.origin.and_then(|s| parse_device_origin(&s).ok()),
+        available_only: request.available_only.unwrap_or(false),
+        virtual_only: request.virtual_only.unwrap_or(false),
+        physical_only: request.physical_only.unwrap_or(false),
+        driver_contains: request.driver_contains,
+        name_contains: request.name_contains,
+    }
+}
+
+/// Parse device type from string
+fn parse_device_type(s: &str) -> Result<DeviceType, String> {
+    match s.to_lowercase().as_str() {
+        "audio" => Ok(DeviceType::Audio),
+        "video" => Ok(DeviceType::Video),
+        _ => Err(format!("Invalid device type: {}", s)),
+    }
+}
+
+/// Parse device category from string
+fn parse_device_category(s: &str) -> Result<DeviceCategory, String> {
+    match s.to_lowercase().as_str() {
+        "input" => Ok(DeviceCategory::Input),
+        "output" => Ok(DeviceCategory::Output),
+        "both" => Ok(DeviceCategory::Both),
+        _ => Err(format!("Invalid device category: {}", s)),
+    }
+}
+
+/// Parse device origin from string
+fn parse_device_origin(s: &str) -> Result<DeviceOrigin, String> {
+    match s.to_lowercase().as_str() {
+        "physical" => Ok(DeviceOrigin::Physical),
+        "virtual" => Ok(DeviceOrigin::Virtual),
+        "unknown" => Ok(DeviceOrigin::Unknown),
+        _ => Err(format!("Invalid device origin: {}", s)),
+    }
 }

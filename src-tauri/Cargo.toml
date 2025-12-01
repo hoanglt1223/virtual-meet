@@ -39,6 +39,9 @@ symphonia = { workspace = true }
 windows-capture = { workspace = true }
 image = { workspace = true }
 
+# Device enumeration and capabilities
+chrono = { workspace = true }
+
 # Scripting
 rhai = { workspace = true }
 
