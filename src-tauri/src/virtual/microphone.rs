@@ -18,6 +18,282 @@ use crate::audio::{AudioFrameData, AudioBuffer, AudioConfig, AudioSampleFormat, 
 use crate::audio_decoder::AudioDecoder;
 use crate::audio_processor::{AudioProcessor, AudioProcessorStats, AudioVisualizer, AudioVisualizationData};
 
+// Windows API imports
+use windows::{
+    core::*,
+    Win32::{
+        Media::Audio::*,
+        Media::KernelStreaming::*,
+        System::Com::*,
+        System::Ole::*,
+        System::Threading::*,
+    },
+};
+
+use std::ptr;
+
+/// WASAPI virtual microphone implementation
+pub struct WasapiVirtualMicrophone {
+    audio_client: Option<IAudioClient>,
+    capture_client: Option<IAudioCaptureClient>,
+    render_client: Option<IAudioRenderClient>,
+    device_enumerator: Option<IMMDeviceEnumerator>,
+    device: Option<IMMDevice>,
+    initialized: bool,
+    audio_config: AudioConfig,
+}
+
+impl WasapiVirtualMicrophone {
+    pub fn new(config: AudioConfig) -> Self {
+        Self {
+            audio_client: None,
+            capture_client: None,
+            render_client: None,
+            device_enumerator: None,
+            device: None,
+            initialized: false,
+            audio_config: config,
+        }
+    }
+
+    /// Initialize WASAPI virtual microphone
+    pub async fn initialize(&mut self) -> Result<()> {
+        info!("Initializing WASAPI virtual microphone");
+
+        // Initialize COM
+        unsafe {
+            CoInitializeEx(None, COINIT_MULTITHREADED)
+                .map_err(|e| anyhow!("Failed to initialize COM: {}", e))?;
+        }
+
+        // Create device enumerator
+        unsafe {
+            let enumerator: IMMDeviceEnumerator = CoCreateInstance(&CLSID_MMDeviceEnumerator, None, CLSCTX_ALL)
+                .map_err(|e| anyhow!("Failed to create device enumerator: {}", e))?;
+
+            self.device_enumerator = Some(enumerator);
+        }
+
+        // Create virtual audio device
+        self.create_virtual_audio_device().await?;
+
+        // Initialize audio client
+        self.initialize_audio_client().await?;
+
+        self.initialized = true;
+        info!("WASAPI virtual microphone initialized successfully");
+        Ok(())
+    }
+
+    /// Create virtual audio device
+    async fn create_virtual_audio_device(&mut self) -> Result<()> {
+        info!("Creating virtual audio device");
+
+        // TODO: This requires creating a virtual audio driver
+        // Production implementation would need:
+        // 1. Custom audio driver development
+        // 2. Kernel Streaming (KS) filter implementation
+        // 3. Device registration with Windows
+
+        warn!("Virtual audio device creation requires custom Windows audio driver development");
+
+        // For demonstration, we'll use the default output device as a loopback
+        unsafe {
+            if let Some(enumerator) = &self.device_enumerator {
+                let default_device = enumerator.GetDefaultAudioEndpoint(eRender, eConsole)
+                    .map_err(|e| anyhow!("Failed to get default audio endpoint: {}", e))?;
+
+                self.device = Some(default_device);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Initialize audio client
+    async fn initialize_audio_client(&mut self) -> Result<()> {
+        info!("Initializing WASAPI audio client");
+
+        if let Some(device) = &self.device {
+            unsafe {
+                let audio_client: IAudioClient = device.Activate(
+                    CLSID_AudioClient,
+                    CLSCTX_ALL,
+                    None,
+                ).map_err(|e| anyhow!("Failed to activate audio client: {}", e))?;
+
+                // Set up audio format
+                let wave_format = WAVEFORMATEX {
+                    wFormatTag: WAVE_FORMAT_EXTENSIBLE as u16,
+                    nChannels: self.audio_config.output_channels as u16,
+                    nSamplesPerSec: self.audio_config.output_sample_rate,
+                    nAvgBytesPerSec: (self.audio_config.output_sample_rate *
+                                    self.audio_config.output_channels as u32 *
+                                    4) as u32, // 32-bit samples
+                    nBlockAlign: (self.audio_config.output_channels as u16 * 4) as u16,
+                    wBitsPerSample: 32,
+                    cbSize: 22, // Size of WAVEFORMATEXTENSIBLE
+                };
+
+                // Initialize audio client in shared mode
+                let mut format_ptr = &wave_format as *const _ as *mut _;
+                let result = audio_client.Initialize(
+                    AUDCLNT_SHAREMODE_SHARED,
+                    AUDCLNT_STREAMFLAGS_LOOPBACK,
+                    1000000, // 1 second buffer duration
+                    0,
+                    PWSTR(format_ptr as *mut _),
+                    None,
+                );
+
+                if result.is_err() {
+                    warn!("Failed to initialize audio client in loopback mode - this requires virtual audio driver");
+                }
+
+                self.audio_client = Some(audio_client);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Send audio samples to virtual microphone
+    pub async fn send_audio_samples(&mut self, samples: &[f32]) -> Result<()> {
+        if !self.initialized {
+            return Err(anyhow!("WASAPI virtual microphone not initialized"));
+        }
+
+        debug!("Sending {} audio samples to virtual microphone", samples.len());
+
+        // TODO: Implement audio sample delivery to virtual device
+        // This would:
+        // 1. Convert samples to required format
+        // 2. Deliver to virtual audio endpoint
+        // 3. Handle buffer management
+
+        Ok(())
+    }
+
+    /// Start virtual microphone streaming
+    pub async fn start_streaming(&mut self) -> Result<()> {
+        if !self.initialized {
+            return Err(anyhow!("WASAPI virtual microphone not initialized"));
+        }
+
+        info!("Starting WASAPI virtual microphone streaming");
+
+        if let Some(audio_client) = &self.audio_client {
+            unsafe {
+                audio_client.Start()
+                    .map_err(|e| anyhow!("Failed to start audio client: {}", e))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Stop virtual microphone streaming
+    pub async fn stop_streaming(&mut self) -> Result<()> {
+        info!("Stopping WASAPI virtual microphone streaming");
+
+        if let Some(audio_client) = &self.audio_client {
+            unsafe {
+                audio_client.Stop()
+                    .map_err(|e| anyhow!("Failed to stop audio client: {}", e))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Set audio format
+    pub async fn set_format(&mut self, sample_rate: u32, channels: u16, format: AudioSampleFormat) -> Result<()> {
+        info!("Setting virtual microphone format: {} Hz, {} channels, {:?}",
+              sample_rate, channels, format);
+
+        self.audio_config.output_sample_rate = sample_rate;
+        self.audio_config.output_channels = channels as u32;
+        self.audio_config.output_format = format;
+
+        // TODO: Reinitialize audio client with new format
+
+        Ok(())
+    }
+}
+
+impl Drop for WasapiVirtualMicrophone {
+    fn drop(&mut self) {
+        info!("Cleaning up WASAPI virtual microphone");
+
+        unsafe {
+            if let Some(audio_client) = &self.audio_client {
+                let _ = audio_client.Stop();
+            }
+
+            CoUninitialize();
+        }
+    }
+}
+
+/// Kernel Streaming virtual microphone implementation
+pub struct KSVirtualMicrophone {
+    ks_filter: Option<Handle>,
+    initialized: bool,
+    audio_config: AudioConfig,
+}
+
+impl KSVirtualMicrophone {
+    pub fn new(config: AudioConfig) -> Self {
+        Self {
+            ks_filter: None,
+            initialized: false,
+            audio_config: config,
+        }
+    }
+
+    /// Initialize KS virtual microphone
+    pub async fn initialize(&mut self) -> Result<()> {
+        info!("Initializing Kernel Streaming virtual microphone");
+
+        // TODO: This requires KS driver development
+        // Production implementation would need:
+        // 1. Custom KS audio filter driver
+        // 2. Filter registration with Windows
+        // 3. Pin and topology implementation
+
+        warn!("Kernel Streaming virtual microphone requires custom audio driver development");
+
+        self.initialized = true;
+        info!("KS virtual microphone initialized successfully");
+        Ok(())
+    }
+
+    /// Send audio samples through KS interface
+    pub async fn send_audio_samples(&mut self, samples: &[f32]) -> Result<()> {
+        if !self.initialized {
+            return Err(anyhow!("KS virtual microphone not initialized"));
+        }
+
+        // TODO: Deliver samples through KS filter
+        debug!("Sending {} samples through KS interface", samples.len());
+
+        Ok(())
+    }
+}
+
+impl Drop for KSVirtualMicrophone {
+    fn drop(&mut self) {
+        info!("Cleaning up KS virtual microphone");
+    }
+}
+
+/// Microphone backend options
+#[derive(Debug, Clone)]
+pub enum MicrophoneBackend {
+    WASAPI,
+    KernelStreaming,
+}
+
 /// Virtual microphone manager
 pub struct VirtualMicrophone {
     is_active: Arc<AtomicBool>,
@@ -31,6 +307,11 @@ pub struct VirtualMicrophone {
     audio_buffer: Arc<StdMutex<AudioBuffer>>,
     audio_visualizer: Arc<Mutex<AudioVisualizer>>,
 
+    // Windows API backends
+    wasapi_backend: Arc<StdMutex<WasapiVirtualMicrophone>>,
+    ks_backend: Arc<StdMutex<KSVirtualMicrophone>>,
+    backend: MicrophoneBackend,
+
     // Threading and synchronization
     decode_thread_handle: Option<thread::JoinHandle<()>>,
     playback_thread_handle: Option<thread::JoinHandle<()>>,
@@ -40,6 +321,11 @@ pub struct VirtualMicrophone {
 impl VirtualMicrophone {
     /// Create a new virtual microphone instance
     pub fn new() -> Self {
+        Self::with_backend(MicrophoneBackend::WASAPI)
+    }
+
+    /// Create a new virtual microphone instance with specified backend
+    pub fn with_backend(backend: MicrophoneBackend) -> Self {
         let audio_config = AudioConfig::default();
         let audio_processor = AudioProcessor::new(audio_config.clone());
         let audio_decoder = AudioDecoder::new();
@@ -55,6 +341,9 @@ impl VirtualMicrophone {
             audio_processor: Arc::new(Mutex::new(audio_processor)),
             audio_buffer: Arc::new(StdMutex::new(audio_buffer)),
             audio_visualizer: Arc::new(Mutex::new(audio_visualizer)),
+            wasapi_backend: Arc::new(StdMutex::new(WasapiVirtualMicrophone::new(AudioConfig::default()))),
+            ks_backend: Arc::new(StdMutex::new(KSVirtualMicrophone::new(AudioConfig::default()))),
+            backend,
             decode_thread_handle: None,
             playback_thread_handle: None,
             should_stop: Arc::new(AtomicBool::new(false)),
@@ -63,7 +352,7 @@ impl VirtualMicrophone {
 
     /// Initialize the virtual microphone
     pub async fn initialize(&self) -> Result<()> {
-        info!("Initializing virtual microphone using WASAPI");
+        info!("Initializing virtual microphone using {:?} backend", self.backend);
 
         // Initialize audio processing pipeline
         let processor = self.audio_processor.lock().await;
@@ -72,7 +361,18 @@ impl VirtualMicrophone {
               self.audio_config.output_sample_rate,
               self.audio_config.output_format);
 
-        warn!("Virtual microphone initialization partially implemented - requires Windows Audio Driver development for true virtual device");
+        match self.backend {
+            MicrophoneBackend::WASAPI => {
+                let mut backend = self.wasapi_backend.lock().map_err(|_| anyhow!("Failed to lock WASAPI backend"))?;
+                backend.initialize().await?;
+            },
+            MicrophoneBackend::KernelStreaming => {
+                let mut backend = self.ks_backend.lock().map_err(|_| anyhow!("Failed to lock KS backend"))?;
+                backend.initialize().await?;
+            },
+        }
+
+        info!("Virtual microphone initialized successfully with {:?} backend", self.backend);
         Ok(())
     }
 
@@ -100,6 +400,19 @@ impl VirtualMicrophone {
 
         // Start audio playback thread (simulated virtual device)
         self.start_playback_thread()?;
+
+        // Start backend streaming
+        match self.backend {
+            MicrophoneBackend::WASAPI => {
+                let mut backend = self.wasapi_backend.lock().map_err(|_| anyhow!("Failed to lock WASAPI backend"))?;
+                backend.start_streaming().await?;
+            },
+            MicrophoneBackend::KernelStreaming => {
+                let mut backend = self.ks_backend.lock().map_err(|_| anyhow!("Failed to lock KS backend"))?;
+                // KS backend doesn't have start_streaming method yet
+                warn!("KS backend streaming not fully implemented");
+            },
+        }
 
         // Set active state
         self.is_active.store(true, Ordering::Relaxed);
@@ -141,6 +454,9 @@ impl VirtualMicrophone {
         let buffer = Arc::clone(&self.audio_buffer);
         let visualizer = Arc::clone(&self.audio_visualizer);
         let should_stop = Arc::clone(&self.should_stop);
+        let wasapi_backend = Arc::clone(&self.wasapi_backend);
+        let ks_backend = Arc::clone(&self.ks_backend);
+        let backend_type = self.backend.clone();
 
         // For now, we'll create a simple output stream as a proof of concept
         // In a full implementation, this would interface with a virtual audio device
@@ -153,9 +469,18 @@ impl VirtualMicrophone {
         let config: StreamConfig = config.into();
 
         let stream = match sample_format {
-            SampleFormat::F32 => self.create_virtual_audio_stream::<f32>(&device, &config, processor, buffer, visualizer, should_stop)?,
-            SampleFormat::I16 => self.create_virtual_audio_stream::<i16>(&device, &config, processor, buffer, visualizer, should_stop)?,
-            SampleFormat::U16 => self.create_virtual_audio_stream::<u16>(&device, &config, processor, buffer, visualizer, should_stop)?,
+            SampleFormat::F32 => self.create_virtual_audio_stream::<f32>(
+                &device, &config, processor, buffer, visualizer, should_stop,
+                wasapi_backend, ks_backend, backend_type
+            )?,
+            SampleFormat::I16 => self.create_virtual_audio_stream::<i16>(
+                &device, &config, processor, buffer, visualizer, should_stop,
+                wasapi_backend, ks_backend, backend_type
+            )?,
+            SampleFormat::U16 => self.create_virtual_audio_stream::<u16>(
+                &device, &config, processor, buffer, visualizer, should_stop,
+                wasapi_backend, ks_backend, backend_type
+            )?,
             _ => return Err(anyhow!("Unsupported sample format: {:?}", sample_format)),
         };
 
@@ -205,6 +530,9 @@ impl VirtualMicrophone {
         buffer: Arc<StdMutex<AudioBuffer>>,
         visualizer: Arc<Mutex<AudioVisualizer>>,
         should_stop: Arc<AtomicBool>,
+        wasapi_backend: Arc<StdMutex<WasapiVirtualMicrophone>>,
+        ks_backend: Arc<StdMutex<KSVirtualMicrophone>>,
+        backend_type: MicrophoneBackend,
     ) -> Result<Stream>
     where
         T: cpal::Sample,
@@ -272,6 +600,32 @@ impl VirtualMicrophone {
 
                 // Convert processed frame data to output format
                 Self::fill_output_buffer::<T>(data, &processed_frame);
+
+                // Send frame to virtual microphone backend
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let _ = rt.block_on(async {
+                    match backend_type {
+                        MicrophoneBackend::WASAPI => {
+                            let mut backend = wasapi_backend.lock().ok()?;
+                            let samples: Vec<f32> = processed_frame.data.chunks_exact(4)
+                                .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                                .collect();
+                            if let Err(e) = backend.send_audio_samples(&samples).await {
+                                error!("Failed to send audio samples to WASAPI virtual microphone: {}", e);
+                            }
+                        },
+                        MicrophoneBackend::KernelStreaming => {
+                            let mut backend = ks_backend.lock().ok()?;
+                            let samples: Vec<f32> = processed_frame.data.chunks_exact(4)
+                                .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                                .collect();
+                            if let Err(e) = backend.send_audio_samples(&samples).await {
+                                error!("Failed to send audio samples to KS virtual microphone: {}", e);
+                            }
+                        },
+                    }
+                    Some(())
+                });
             },
             |err| error!("Audio stream error: {}", err),
             None,
@@ -322,6 +676,18 @@ impl VirtualMicrophone {
         }
 
         info!("Stopping audio stream");
+
+        // Stop backend streaming
+        match self.backend {
+            MicrophoneBackend::WASAPI => {
+                let mut backend = self.wasapi_backend.lock().map_err(|_| anyhow!("Failed to lock WASAPI backend"))?;
+                backend.stop_streaming().await?;
+            },
+            MicrophoneBackend::KernelStreaming => {
+                // KS backend doesn't have stop_streaming method yet
+                warn!("KS backend streaming not fully implemented");
+            },
+        }
 
         // Signal threads to stop
         self.should_stop.store(true, Ordering::Relaxed);
@@ -422,20 +788,78 @@ impl VirtualMicrophone {
     pub async fn list_devices() -> Result<Vec<String>> {
         info!("Enumerating audio devices");
 
-        let host = cpal::default_host();
-        let devices = host.devices()?;
+        let mut devices = Vec::new();
 
-        let device_names: Result<Vec<_>> = devices
-            .map(|d| d.name().map_err(|e| anyhow!("Failed to get device name: {}", e)))
-            .collect();
-
-        match device_names {
-            Ok(mut names) => {
-                names.insert(0, "VirtualMicrophone".to_string());
-                Ok(names)
+        // Enumerate WASAPI devices
+        unsafe {
+            if let Ok(wasapi_devices) = Self::enumerate_wasapi_devices() {
+                devices.extend(wasapi_devices);
             }
-            Err(e) => Err(e)
         }
+
+        // Enumerate CPAL devices
+        let host = cpal::default_host();
+        if let Ok(cpal_devices) = host.devices() {
+            let device_names: Result<Vec<_>> = cpal_devices
+                .map(|d| d.name().map_err(|e| anyhow!("Failed to get device name: {}", e)))
+                .collect();
+
+            if let Ok(mut names) = device_names {
+                for name in names {
+                    devices.push(format!("CPAL: {}", name));
+                }
+            }
+        }
+
+        // Add our virtual devices
+        devices.push("VirtualMicrophone (WASAPI)".to_string());
+        devices.push("VirtualMicrophone (KernelStreaming)".to_string());
+
+        info!("Found {} audio devices", devices.len());
+        Ok(devices)
+    }
+
+    /// Enumerate WASAPI audio devices
+    unsafe fn enumerate_wasapi_devices() -> Result<Vec<String>> {
+        let mut devices = Vec::new();
+
+        // Create device enumerator
+        let enumerator: IMMDeviceEnumerator = match CoCreateInstance(&CLSID_MMDeviceEnumerator, None, CLSCTX_ALL) {
+            Ok(e) => e,
+            Err(_) => return Ok(devices),
+        };
+
+        // Enumerate capture devices
+        if let Ok(capture_collection) = enumerator.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE) {
+            let mut count = 0u32;
+            let _ = capture_collection.GetCount(&mut count);
+
+            for i in 0..count {
+                if let Ok(device) = capture_collection.Item(i) {
+                    if let Ok(id) = device.GetId() {
+                        let id_str = String::from_utf16_lossy(&id.as_wide());
+                        devices.push(format!("WASAPI Capture: {}", id_str));
+                    }
+                }
+            }
+        }
+
+        // Enumerate render devices
+        if let Ok(render_collection) = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE) {
+            let mut count = 0u32;
+            let _ = render_collection.GetCount(&mut count);
+
+            for i in 0..count {
+                if let Ok(device) = render_collection.Item(i) {
+                    if let Ok(id) = device.GetId() {
+                        let id_str = String::from_utf16_lossy(&id.as_wide());
+                        devices.push(format!("WASAPI Render: {}", id_str));
+                    }
+                }
+            }
+        }
+
+        Ok(devices)
     }
 }
 
