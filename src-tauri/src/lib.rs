@@ -6,3 +6,4 @@ pub mod devices;
 pub mod recording;
 pub mod scripting;
 pub mod hotkeys;
+pub mod virtual;
