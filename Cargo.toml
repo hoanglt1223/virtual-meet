@@ -1,0 +1,42 @@
+[workspace]
+members = [
+    "src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["VirtualMeet Contributors"]
+license = "MIT"
+
+[workspace.dependencies]
+tauri = { version = "2.0", features = ["rustls-tls"] }
+tauri-plugin-shell = "2.0"
+tauri-plugin-dialog = "2.0"
+tauri-plugin-fs = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Media processing
+ffmpeg-next = "6.0"
+rodio = "0.17"
+
+# Windows-specific
+windows = { version = "0.52", features = [
+    "Win32_Media_Audio",
+    "Win32_Media_Multimedia",
+    "Win32_Devices_Multimedia",
+    "Win32_System_Com",
+    "Win32_UI_Shell",
+    "Win32_Foundation",
+] }
+
+# Scripting
+rhai = "1.16"
+
+# Hotkeys
+global-hotkey = "0.5"
