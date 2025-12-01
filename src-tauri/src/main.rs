@@ -46,6 +46,24 @@ async fn main() {
             let hotkey_state = commands_hotkeys::init_hotkey_system();
             app.manage(hotkey_state);
 
+            // Register default global hotkeys
+            let app_handle_for_hotkeys = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = commands_hotkeys::register_default_hotkeys(&app_handle_for_hotkeys).await {
+                    tracing::error!("Failed to register default hotkeys: {}", e);
+                } else {
+                    tracing::info!("Default hotkeys registered successfully");
+                }
+            });
+
+            // Set up global hotkey event listener
+            let app_handle_for_listener = app.handle().clone();
+            if let Err(e) = commands_hotkeys::setup_global_hotkey_listener(app_handle_for_listener) {
+                tracing::error!("Failed to setup global hotkey listener: {}", e);
+            } else {
+                tracing::info!("Global hotkey listener setup successfully");
+            }
+
             // Initialize scripting state
             let scripting_state = commands_scripting::init_scripting_system();
             app.manage(scripting_state);
