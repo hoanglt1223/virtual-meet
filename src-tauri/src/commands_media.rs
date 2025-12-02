@@ -10,7 +10,7 @@ use tracing::{info, error, warn, debug};
 
 use crate::AppState;
 use crate::audio::AudioMetadata;
-use crate::virtual::VideoInfo;
+use crate::virtual_device::VideoInfo;
 use crate::media_library::{MediaLibraryDatabase, LibraryStats, SearchFilter};
 use crate::media_scanner::{MediaScanner, ScannerConfig, ScanResult};
 use std::sync::Arc;

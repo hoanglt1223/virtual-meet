@@ -264,7 +264,7 @@ mod virtual_device_tests {
 
     #[tokio::test]
     async fn test_buffer_status_utilization() {
-        use crate::virtual::webcam::BufferStatus;
+        use crate::virtual_device::webcam::BufferStatus;
 
         let status = BufferStatus {
             current_frames: 150,
@@ -293,7 +293,7 @@ mod virtual_device_tests {
 
     #[tokio::test]
     async fn test_video_info_formatting() {
-        use crate::virtual::webcam::VideoInfo;
+        use crate::virtual_device::webcam::VideoInfo;
 
         let video_info = VideoInfo {
             width: 1920,
@@ -318,7 +318,7 @@ mod virtual_device_tests {
 
     #[tokio::test]
     async fn test_frame_data_operations() {
-        use crate::virtual::webcam::VideoFrameData;
+        use crate::virtual_device::webcam::VideoFrameData;
 
         let data = vec![255u8; 1920 * 1080 * 3]; // RGB24 data
         let frame = VideoFrameData::new(

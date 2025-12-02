@@ -10,7 +10,7 @@ use std::time::Duration;
 use tracing::{info, error, debug, warn};
 
 use crate::audio::AudioMetadata;
-use crate::virtual::VideoInfo;
+use crate::virtual_device::VideoInfo;
 use crate::commands_media::{MediaMetadata, FormatInfo, MediaType};
 
 /// Enhanced metadata extractor

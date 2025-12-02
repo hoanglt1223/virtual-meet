@@ -14,7 +14,7 @@ mod commands_scripting;
 mod commands_recording;
 mod commands_json_dsl;
 mod error;
-mod virtual;
+mod virtual_device;
 mod audio;
 mod audio_decoder;
 mod audio_processor;

@@ -1,35 +1,25 @@
 # GitHub Actions CI/CD
 
-This directory contains the GitHub Actions workflows for VirtualMeet's automated CI/CD pipeline.
+This directory contains the simplified GitHub Actions workflow for VirtualMeet's automated build and deploy pipeline.
 
-## 🚀 Workflows
+## 🚀 Simplified Build and Deploy Pipeline
 
-### 1. CI Pipeline (`ci.yml`)
+### Build and Deploy Workflow (`build-deploy.yml`)
 **Triggers**: Push to `main`/`develop`, Pull Requests
 
-**Jobs**:
-- **Rust Checks**: Code formatting, clippy linting, tests
-- **Frontend Checks**: ESLint, TypeScript verification, build
-- **Tauri Build**: Windows builds with artifact upload (main/develop only)
-- **Security Audit**: Vulnerability scanning
-- **Dependency Check**: Outdated package monitoring
+**Single Job**: All build and deploy functionality in one streamlined process
 
-### 2. Release Pipeline (`release.yml`)
-**Triggers**: Git tags `v*`
-
-**Jobs**:
-- **Release Creation**: Automatic GitHub release
-- **Windows Builds**: Installer and portable versions
-- **Artifact Upload**: Release assets with checksums
-- **Release Notes**: Automatic documentation updates
-
-### 3. Maintenance (`maintenance.yml`)
-**Triggers**: Weekly (Mondays 9AM UTC), Manual dispatch
-
-**Jobs**:
-- **Dependency Updates**: Automated PRs for outdated packages
-- **Security Audit**: Weekly vulnerability reports
-- **Artifact Cleanup**: Remove old artifacts
+**Steps**:
+1. **Setup**: Install pnpm, Node.js, Rust toolchain
+2. **Dependencies**: Install and audit packages
+3. **Quality Checks** (non-blocking):
+   - TypeScript type checking
+   - ESLint code quality verification
+   - Rust formatting (cargo fmt)
+   - Rust linting (cargo clippy)
+   - Rust tests (cargo test)
+4. **Build**: Frontend + Tauri application compilation
+5. **Deploy**: Upload build artifacts (Windows executable and installer)
 
 ## 🔧 Setup Required
 

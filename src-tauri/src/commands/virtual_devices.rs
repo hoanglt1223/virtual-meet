@@ -8,7 +8,7 @@ use tauri::{command, State};
 use std::sync::{Arc, Mutex as StdMutex};
 use tracing::{info, error, warn, debug};
 
-use crate::virtual::{VirtualWebcam, WebcamBackend, VirtualMicrophone, MicrophoneBackend, MediaRouter, MediaRoutingConfig};
+use crate::virtual_device::{VirtualWebcam, WebcamBackend, VirtualMicrophone, MicrophoneBackend, MediaRouter, MediaRoutingConfig};
 use crate::audio::AudioConfig;
 
 /// Shared state for virtual devices
@@ -424,7 +424,7 @@ pub async fn get_microphone_muted(
 #[command]
 pub async fn get_media_routing_status(
     state: State<'_, VirtualDeviceState>,
-) -> Result<crate::virtual::MediaRoutingStatus, String> {
+) -> Result<crate::virtual_device::MediaRoutingStatus, String> {
     let router_state = state.media_router.lock().map_err(|e| format!("Failed to lock media router state: {}", e))?;
     let media_router = router_state.as_ref().ok_or("Media router not initialized")?;
 
@@ -436,7 +436,7 @@ pub async fn get_media_routing_status(
 #[command]
 pub async fn get_webcam_video_info(
     state: State<'_, VirtualDeviceState>,
-) -> Result<Option<crate::virtual::VideoInfo>, String> {
+) -> Result<Option<crate::virtual_device::VideoInfo>, String> {
     let webcam_state = state.webcam.lock().map_err(|e| format!("Failed to lock webcam state: {}", e))?;
     let webcam = webcam_state.as_ref().ok_or("Virtual webcam not initialized")?;
 
@@ -448,7 +448,7 @@ pub async fn get_webcam_video_info(
 #[command]
 pub async fn get_webcam_buffer_status(
     state: State<'_, VirtualDeviceState>,
-) -> Result<crate::virtual::BufferStatus, String> {
+) -> Result<crate::virtual_device::BufferStatus, String> {
     let webcam_state = state.webcam.lock().map_err(|e| format!("Failed to lock webcam state: {}", e))?;
     let webcam = webcam_state.as_ref().ok_or("Virtual webcam not initialized")?;
 

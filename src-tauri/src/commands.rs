@@ -9,9 +9,9 @@ use std::sync::Arc;
 use tauri::State;
 use tracing::{info, error, warn};
 
-use crate::virtual::webcam::{VirtualWebcam, VideoInfo, BufferStatus};
-use crate::virtual::microphone::VirtualMicrophone;
-use crate::virtual::VirtualDeviceState;
+use crate::virtual_device::webcam::{VirtualWebcam, VideoInfo, BufferStatus};
+use crate::virtual_device::microphone::VirtualMicrophone;
+use crate::virtual_device::VirtualDeviceState;
 use crate::audio::{AudioMetadata, AudioValidator};
 use crate::audio_processor::{AudioProcessorStats, AudioVisualizationData};
 use crate::devices::{
@@ -286,7 +286,7 @@ pub async fn validate_video_file(path: String) -> Result<VideoResponse, String> 
     info!("Validating video file: {}", path);
 
     // Create a temporary decoder to validate the file
-    let mut decoder = crate::virtual::webcam::VideoDecoder::new();
+    let mut decoder = crate::virtual_device::webcam::VideoDecoder::new();
 
     match decoder.open(&path) {
         Ok(()) => {
