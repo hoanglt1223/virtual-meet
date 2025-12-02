@@ -4,30 +4,34 @@
 //! capabilities using DirectShow and Media Foundation on Windows, with the ability
 //! to distinguish between physical and virtual video devices.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use std::collections::HashMap;
-use tracing::{info, warn, debug, error};
+use tracing::{debug, error, info, warn};
+use windows::core::{Interface, GUID, HSTRING};
 use windows::Win32::Media::DirectShow::{
-    ICreateDevEnum, CLSID_SystemDeviceEnum, ICaptureGraphBuilder2,
-    IGraphBuilder, IMediaControl, IBaseFilter, IEnumMoniker, IMoniker,
-    CLSID_VideoInputDeviceCategory, CLSID_LegacyAmFilterCategory,
+    CLSID_LegacyAmFilterCategory, CLSID_SystemDeviceEnum, CLSID_VideoInputDeviceCategory,
+    IBaseFilter, ICaptureGraphBuilder2, ICreateDevEnum, IEnumMoniker, IGraphBuilder, IMediaControl,
+    IMoniker,
 };
 use windows::Win32::Media::MediaFoundation::{
-    IMFAttributes, IMFActivate, MFEnumDeviceSources, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID, MFCreateAttributes,
+    IMFActivate, IMFAttributes, MFCreateAttributes, MFEnumDeviceSources,
+    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID,
 };
-use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL, CoInitializeEx, COINIT_MULTITHREADED};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
+};
 use windows::Win32::System::PropertiesSystem::IPropertyStore;
-use windows::core::{Interface, HSTRING, GUID};
 use windows_capture::{
-    monitor::Monitor,
-    window::Window,
-    capture::{GraphicsCaptureApi, CaptureControl},
+    capture::{CaptureControl, GraphicsCaptureApi},
     frame::Frame,
-    settings::{Settings, ColorFormat},
+    monitor::Monitor,
+    settings::{ColorFormat, Settings},
+    window::Window,
 };
 
-use crate::devices::{DeviceInfo, DeviceType, DeviceCategory, DeviceOrigin, FullDeviceInfo, DeviceCapabilities};
+use crate::devices::{
+    DeviceCapabilities, DeviceCategory, DeviceInfo, DeviceOrigin, DeviceType, FullDeviceInfo,
+};
 
 /// Known virtual video device identifiers and patterns
 const VIRTUAL_VIDEO_PATTERNS: &[&str] = &[
@@ -89,8 +93,14 @@ impl VideoDeviceEnumerator {
     /// Create a new video device enumerator
     pub fn new() -> Self {
         Self {
-            virtual_patterns: VIRTUAL_VIDEO_PATTERNS.iter().map(|s| s.to_lowercase()).collect(),
-            physical_manufacturers: PHYSICAL_VIDEO_MANUFACTURERS.iter().map(|s| s.to_lowercase()).collect(),
+            virtual_patterns: VIRTUAL_VIDEO_PATTERNS
+                .iter()
+                .map(|s| s.to_lowercase())
+                .collect(),
+            physical_manufacturers: PHYSICAL_VIDEO_MANUFACTURERS
+                .iter()
+                .map(|s| s.to_lowercase())
+                .collect(),
         }
     }
 
@@ -145,8 +155,10 @@ impl VideoDeviceEnumerator {
         let mut devices = Vec::new();
 
         unsafe {
-            let create_dev_enum: ICreateDevEnum = CoCreateInstance(&CLSID_SystemDeviceEnum, None, CLSCTX_ALL)?;
-            let enum_moniker: IEnumMoniker = create_dev_enum.CreateClassEnumerator(&CLSID_VideoInputDeviceCategory)?;
+            let create_dev_enum: ICreateDevEnum =
+                CoCreateInstance(&CLSID_SystemDeviceEnum, None, CLSCTX_ALL)?;
+            let enum_moniker: IEnumMoniker =
+                create_dev_enum.CreateClassEnumerator(&CLSID_VideoInputDeviceCategory)?;
 
             let mut moniker_count = 0;
             let mut monikers = Vec::new();
@@ -184,17 +196,27 @@ impl VideoDeviceEnumerator {
     async fn process_directshow_moniker(&self, moniker: &IMoniker) -> Result<FullDeviceInfo> {
         unsafe {
             // Get device friendly name
-            let property_store: IPropertyStore = moniker.BindToStorage(None, &IPropertyStore::IID)?;
+            let property_store: IPropertyStore =
+                moniker.BindToStorage(None, &IPropertyStore::IID)?;
 
-            let name = self.get_property_store_string(&property_store, &windows::Win32::System::PropertiesSystem::DEVPROPKEY_Device_FriendlyName)
+            let name = self
+                .get_property_store_string(
+                    &property_store,
+                    &windows::Win32::System::PropertiesSystem::DEVPROPKEY_Device_FriendlyName,
+                )
                 .unwrap_or_else(|| "Unknown Video Device".to_string());
 
             // Get device description
-            let description = self.get_property_store_string(&property_store, &windows::Win32::System::PropertiesSystem::DEVPROPKEY_Device_DeviceDesc)
+            let description = self
+                .get_property_store_string(
+                    &property_store,
+                    &windows::Win32::System::PropertiesSystem::DEVPROPKEY_Device_DeviceDesc,
+                )
                 .unwrap_or_else(|| "Video Capture Device".to_string());
 
             // Get device ID
-            let device_id = moniker.GetDisplayName(None, &windows::Win32::System::Com::STGM_READ)?;
+            let device_id =
+                moniker.GetDisplayName(None, &windows::Win32::System::Com::STGM_READ)?;
             let id_string = device_id.to_string();
 
             // Determine if device is virtual or physical
@@ -216,7 +238,10 @@ impl VideoDeviceEnumerator {
             device_info.add_property("api".to_string(), "directshow".to_string());
 
             // Try to get additional device properties
-            if let Ok(manufacturer) = self.get_property_store_string(&property_store, &windows::Win32::System::PropertiesSystem::DEVPROPKEY_Device_Manufacturer) {
+            if let Ok(manufacturer) = self.get_property_store_string(
+                &property_store,
+                &windows::Win32::System::PropertiesSystem::DEVPROPKEY_Device_Manufacturer,
+            ) {
                 device_info.add_property("manufacturer".to_string(), manufacturer);
             }
 
@@ -241,7 +266,10 @@ impl VideoDeviceEnumerator {
     }
 
     /// Detect DirectShow device capabilities
-    async fn detect_directshow_capabilities(&self, moniker: &IMoniker) -> Result<DeviceCapabilities> {
+    async fn detect_directshow_capabilities(
+        &self,
+        moniker: &IMoniker,
+    ) -> Result<DeviceCapabilities> {
         let mut capabilities = DeviceCapabilities::new();
 
         unsafe {
@@ -272,12 +300,14 @@ impl VideoDeviceEnumerator {
                 ]);
 
                 // Add common frame rates
-                capabilities.supported_frame_rates.extend_from_slice(&[
-                    15.0, 24.0, 25.0, 30.0, 60.0, 120.0,
-                ]);
+                capabilities
+                    .supported_frame_rates
+                    .extend_from_slice(&[15.0, 24.0, 25.0, 30.0, 60.0, 120.0]);
 
                 capabilities.capability_flags.push("directshow".to_string());
-                capabilities.capability_flags.push("video_capture".to_string());
+                capabilities
+                    .capability_flags
+                    .push("video_capture".to_string());
             }
         }
 
@@ -295,7 +325,10 @@ impl VideoDeviceEnumerator {
 
         unsafe {
             let attributes: IMFAttributes = MFCreateAttributes()?;
-            attributes.SetGUID(&MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID)?;
+            attributes.SetGUID(
+                &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+                &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID,
+            )?;
 
             let mut activate_objects: Vec<IMFActivate> = Vec::new();
             let mut count = 0u32;
@@ -305,7 +338,10 @@ impl VideoDeviceEnumerator {
             info!("Media Foundation found {} video devices", count);
 
             for (index, activate) in activate_objects.iter().enumerate() {
-                if let Ok(device_info) = self.process_media_foundation_activate(activate, index).await {
+                if let Ok(device_info) = self
+                    .process_media_foundation_activate(activate, index)
+                    .await
+                {
                     devices.push(device_info);
                 }
             }
@@ -386,11 +422,20 @@ impl VideoDeviceEnumerator {
                 "H264".to_string(),
             ]);
             capabilities.supported_resolutions.extend_from_slice(&[
-                (640, 480), (1280, 720), (1920, 1080), (3840, 2160),
+                (640, 480),
+                (1280, 720),
+                (1920, 1080),
+                (3840, 2160),
             ]);
-            capabilities.supported_frame_rates.extend_from_slice(&[15.0, 30.0, 60.0]);
-            capabilities.capability_flags.push("media_foundation".to_string());
-            capabilities.capability_flags.push("video_capture".to_string());
+            capabilities
+                .supported_frame_rates
+                .extend_from_slice(&[15.0, 30.0, 60.0]);
+            capabilities
+                .capability_flags
+                .push("media_foundation".to_string());
+            capabilities
+                .capability_flags
+                .push("video_capture".to_string());
 
             Ok(FullDeviceInfo::new(device_info, capabilities))
         }
@@ -429,31 +474,65 @@ impl VideoDeviceEnumerator {
         // Check for OBS Virtual Camera
         if self.is_software_installed("OBS Studio") {
             let mut capabilities = DeviceCapabilities::new();
-            capabilities.supported_formats.extend_from_slice(&["RGB24".to_string(), "YUY2".to_string()]);
-            capabilities.supported_resolutions.extend_from_slice(&[(1920, 1080), (1280, 720), (640, 480)]);
-            capabilities.supported_frame_rates.extend_from_slice(&[30.0, 60.0]);
-            capabilities.capability_flags.push("obs_virtual_camera".to_string());
-            virtual_cameras.push(("OBS Virtual Camera".to_string(), "OBS Studio".to_string(), capabilities));
+            capabilities
+                .supported_formats
+                .extend_from_slice(&["RGB24".to_string(), "YUY2".to_string()]);
+            capabilities.supported_resolutions.extend_from_slice(&[
+                (1920, 1080),
+                (1280, 720),
+                (640, 480),
+            ]);
+            capabilities
+                .supported_frame_rates
+                .extend_from_slice(&[30.0, 60.0]);
+            capabilities
+                .capability_flags
+                .push("obs_virtual_camera".to_string());
+            virtual_cameras.push((
+                "OBS Virtual Camera".to_string(),
+                "OBS Studio".to_string(),
+                capabilities,
+            ));
         }
 
         // Check for SplitCam
         if self.is_software_installed("SplitCam") {
             let mut capabilities = DeviceCapabilities::new();
-            capabilities.supported_formats.extend_from_slice(&["RGB24".to_string(), "YUY2".to_string()]);
-            capabilities.supported_resolutions.extend_from_slice(&[(1920, 1080), (1280, 720)]);
-            capabilities.supported_frame_rates.extend_from_slice(&[30.0]);
+            capabilities
+                .supported_formats
+                .extend_from_slice(&["RGB24".to_string(), "YUY2".to_string()]);
+            capabilities
+                .supported_resolutions
+                .extend_from_slice(&[(1920, 1080), (1280, 720)]);
+            capabilities
+                .supported_frame_rates
+                .extend_from_slice(&[30.0]);
             capabilities.capability_flags.push("splitcam".to_string());
-            virtual_cameras.push(("SplitCam Virtual Camera".to_string(), "SplitCam".to_string(), capabilities));
+            virtual_cameras.push((
+                "SplitCam Virtual Camera".to_string(),
+                "SplitCam".to_string(),
+                capabilities,
+            ));
         }
 
         // Check for ManyCam
         if self.is_software_installed("ManyCam") {
             let mut capabilities = DeviceCapabilities::new();
-            capabilities.supported_formats.extend_from_slice(&["RGB24".to_string()]);
-            capabilities.supported_resolutions.extend_from_slice(&[(1920, 1080), (1280, 720)]);
-            capabilities.supported_frame_rates.extend_from_slice(&[30.0]);
+            capabilities
+                .supported_formats
+                .extend_from_slice(&["RGB24".to_string()]);
+            capabilities
+                .supported_resolutions
+                .extend_from_slice(&[(1920, 1080), (1280, 720)]);
+            capabilities
+                .supported_frame_rates
+                .extend_from_slice(&[30.0]);
             capabilities.capability_flags.push("manycam".to_string());
-            virtual_cameras.push(("ManyCam Virtual Webcam".to_string(), "ManyCam".to_string(), capabilities));
+            virtual_cameras.push((
+                "ManyCam Virtual Webcam".to_string(),
+                "ManyCam".to_string(),
+                capabilities,
+            ));
         }
 
         virtual_cameras
@@ -487,20 +566,23 @@ impl VideoDeviceEnumerator {
         }
 
         // Additional heuristics
-        if name_lower.contains("usb video device") ||
-           name_lower.contains("integrated camera") ||
-           name_lower.contains("hd pro webcam") ||
-           name_lower.contains("hd webcam") ||
-           name_lower.contains("lifecam") ||
-           name_lower.contains("webcam") ||
-           name_lower.contains("camera") && !name_lower.contains("virtual") {
+        if name_lower.contains("usb video device")
+            || name_lower.contains("integrated camera")
+            || name_lower.contains("hd pro webcam")
+            || name_lower.contains("hd webcam")
+            || name_lower.contains("lifecam")
+            || name_lower.contains("webcam")
+            || name_lower.contains("camera") && !name_lower.contains("virtual")
+        {
             return DeviceOrigin::Physical;
         }
 
         // Check device ID for patterns
         if id_lower.contains("usb\\vid_") || // USB Vendor ID
            id_lower.contains("pci\\ven_") || // PCI Vendor ID
-           id_lower.contains("acpi\\") { // ACPI device
+           id_lower.contains("acpi\\")
+        {
+            // ACPI device
             return DeviceOrigin::Physical;
         }
 
@@ -548,12 +630,18 @@ pub struct VideoDeviceUtils;
 impl VideoDeviceUtils {
     /// Check if a device supports a specific resolution
     pub fn supports_resolution(device: &FullDeviceInfo, width: u32, height: u32) -> bool {
-        device.capabilities.supported_resolutions.contains(&(width, height))
+        device
+            .capabilities
+            .supported_resolutions
+            .contains(&(width, height))
     }
 
     /// Check if a device supports a specific frame rate
     pub fn supports_frame_rate(device: &FullDeviceInfo, frame_rate: f32) -> bool {
-        device.capabilities.supported_frame_rates.contains(&frame_rate)
+        device
+            .capabilities
+            .supported_frame_rates
+            .contains(&frame_rate)
     }
 
     /// Check if a device supports a specific format
@@ -563,17 +651,23 @@ impl VideoDeviceUtils {
 
     /// Get recommended configuration for a device
     pub fn get_recommended_config(device: &FullDeviceInfo) -> Option<(u32, u32, f32, String)> {
-        let (width, height) = device.capabilities.supported_resolutions
+        let (width, height) = device
+            .capabilities
+            .supported_resolutions
             .iter()
             .find(|&&(w, h)| (w == 1920 && h == 1080) || (w == 1280 && h == 720))
             .or_else(|| device.capabilities.supported_resolutions.first())?;
 
-        let frame_rate = device.capabilities.supported_frame_rates
+        let frame_rate = device
+            .capabilities
+            .supported_frame_rates
             .iter()
             .find(|&&fr| fr == 30.0 || fr == 60.0)
             .or_else(|| device.capabilities.supported_frame_rates.first())?;
 
-        let format = device.capabilities.supported_formats
+        let format = device
+            .capabilities
+            .supported_formats
             .iter()
             .find(|f| f == "YUY2" || f == "RGB24" || f == "NV12")
             .or_else(|| device.capabilities.supported_formats.first())?
@@ -584,14 +678,16 @@ impl VideoDeviceUtils {
 
     /// Get all virtual cameras from device list
     pub fn get_virtual_cameras(devices: &[FullDeviceInfo]) -> Vec<&FullDeviceInfo> {
-        devices.iter()
+        devices
+            .iter()
             .filter(|d| d.info.device_type == DeviceType::Video && d.info.is_virtual())
             .collect()
     }
 
     /// Get all physical cameras from device list
     pub fn get_physical_cameras(devices: &[FullDeviceInfo]) -> Vec<&FullDeviceInfo> {
-        devices.iter()
+        devices
+            .iter()
             .filter(|d| d.info.device_type == DeviceType::Video && d.info.is_physical())
             .collect()
     }
@@ -625,7 +721,8 @@ mod tests {
 
         // Test physical device detection
         assert_eq!(
-            enumerator.determine_device_origin("Logitech HD Pro Webcam C920", "usb\\vid_046d&pid_082d"),
+            enumerator
+                .determine_device_origin("Logitech HD Pro Webcam C920", "usb\\vid_046d&pid_082d"),
             DeviceOrigin::Physical
         );
 

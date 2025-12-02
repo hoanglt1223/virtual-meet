@@ -7,9 +7,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::{command, AppHandle, Manager};
-use tracing::{info, error, warn, debug};
+use tracing::{debug, error, info, warn};
 
-use crate::json_dsl::{JsonDslEngine, JsonDslScript, ScriptExecutionResult, create_example_scripts};
+use crate::json_dsl::{
+    create_example_scripts, JsonDslEngine, JsonDslScript, ScriptExecutionResult,
+};
 use crate::json_dsl_integration::{IntegratedDslEngine, MediaStatus};
 
 /// Global state for JSON DSL functionality
@@ -82,29 +84,32 @@ pub async fn parse_json_dsl_script(
     match engine.parse_script(&script_content).await {
         Ok(script) => {
             let script_info = ScriptInfo {
-                id: script.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                id: script
+                    .id
+                    .clone()
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
                 name: script.name.clone(),
                 description: script.description.clone(),
                 version: script.version.clone(),
-                created_at: script.metadata.as_ref()
+                created_at: script
+                    .metadata
+                    .as_ref()
                     .and_then(|m| m.created_at)
                     .map(|dt| dt.to_rfc3339()),
-                modified_at: script.metadata.as_ref()
+                modified_at: script
+                    .metadata
+                    .as_ref()
                     .and_then(|m| m.modified_at)
                     .map(|dt| dt.to_rfc3339()),
-                tags: script.metadata.as_ref()
-                    .and_then(|m| m.tags.clone()),
-                estimated_duration: script.metadata.as_ref()
-                    .and_then(|m| m.estimated_duration),
+                tags: script.metadata.as_ref().and_then(|m| m.tags.clone()),
+                estimated_duration: script.metadata.as_ref().and_then(|m| m.estimated_duration),
                 action_count: script.actions.len(),
-                variable_count: script.variables.as_ref()
-                    .map(|v| v.len())
-                    .unwrap_or(0),
+                variable_count: script.variables.as_ref().map(|v| v.len()).unwrap_or(0),
             };
 
             info!("Successfully parsed script: {}", script_info.name);
             Ok(script_info)
-        },
+        }
         Err(e) => {
             error!("Failed to parse script: {}", e);
             Err(e.to_string())
@@ -114,21 +119,24 @@ pub async fn parse_json_dsl_script(
 
 /// Save a script to the store
 #[command]
-pub async fn save_json_dsl_script(
-    app: AppHandle,
-    script: JsonDslScript,
-) -> Result<String, String> {
+pub async fn save_json_dsl_script(app: AppHandle, script: JsonDslScript) -> Result<String, String> {
     info!("Saving JSON DSL script: {}", script.name);
 
     let state = app.state::<JsonDslState>();
 
     // Validate the script first
     let engine = state.integrated_engine.lock().unwrap();
-    match engine.parse_script(&serde_json::to_string(&script).unwrap()).await {
+    match engine
+        .parse_script(&serde_json::to_string(&script).unwrap())
+        .await
+    {
         Ok(_) => {
             drop(engine);
 
-            let script_id = script.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            let script_id = script
+                .id
+                .clone()
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
             let mut script_with_id = script;
             script_with_id.id = Some(script_id.clone());
 
@@ -137,7 +145,7 @@ pub async fn save_json_dsl_script(
 
             info!("Successfully saved script with ID: {}", script_id);
             Ok(script_id)
-        },
+        }
         Err(e) => {
             error!("Failed to validate script for saving: {}", e);
             Err(e.to_string())
@@ -147,36 +155,35 @@ pub async fn save_json_dsl_script(
 
 /// Get all saved scripts
 #[command]
-pub async fn get_json_dsl_scripts(
-    app: AppHandle,
-) -> Result<Vec<ScriptInfo>, String> {
+pub async fn get_json_dsl_scripts(app: AppHandle) -> Result<Vec<ScriptInfo>, String> {
     info!("Retrieving all JSON DSL scripts");
 
     let state = app.state::<JsonDslState>();
     let store = state.script_store.lock().unwrap();
 
-    let scripts: Vec<ScriptInfo> = store.values().map(|script| {
-        ScriptInfo {
+    let scripts: Vec<ScriptInfo> = store
+        .values()
+        .map(|script| ScriptInfo {
             id: script.id.clone().unwrap_or_default(),
             name: script.name.clone(),
             description: script.description.clone(),
             version: script.version.clone(),
-            created_at: script.metadata.as_ref()
+            created_at: script
+                .metadata
+                .as_ref()
                 .and_then(|m| m.created_at)
                 .map(|dt| dt.to_rfc3339()),
-            modified_at: script.metadata.as_ref()
+            modified_at: script
+                .metadata
+                .as_ref()
                 .and_then(|m| m.modified_at)
                 .map(|dt| dt.to_rfc3339()),
-            tags: script.metadata.as_ref()
-                .and_then(|m| m.tags.clone()),
-            estimated_duration: script.metadata.as_ref()
-                .and_then(|m| m.estimated_duration),
+            tags: script.metadata.as_ref().and_then(|m| m.tags.clone()),
+            estimated_duration: script.metadata.as_ref().and_then(|m| m.estimated_duration),
             action_count: script.actions.len(),
-            variable_count: script.variables.as_ref()
-                .map(|v| v.len())
-                .unwrap_or(0),
-        }
-    }).collect();
+            variable_count: script.variables.as_ref().map(|v| v.len()).unwrap_or(0),
+        })
+        .collect();
 
     info!("Retrieved {} scripts", scripts.len());
     Ok(scripts)
@@ -197,7 +204,7 @@ pub async fn get_json_dsl_script(
         Some(script) => {
             info!("Successfully retrieved script: {}", script.name);
             Ok(script.clone())
-        },
+        }
         None => {
             warn!("Script not found: {}", script_id);
             Err(format!("Script not found: {}", script_id))
@@ -207,10 +214,7 @@ pub async fn get_json_dsl_script(
 
 /// Delete a script
 #[command]
-pub async fn delete_json_dsl_script(
-    app: AppHandle,
-    script_id: String,
-) -> Result<bool, String> {
+pub async fn delete_json_dsl_script(app: AppHandle, script_id: String) -> Result<bool, String> {
     info!("Deleting script: {}", script_id);
 
     let state = app.state::<JsonDslState>();
@@ -220,7 +224,7 @@ pub async fn delete_json_dsl_script(
         Some(_) => {
             info!("Successfully deleted script: {}", script_id);
             Ok(true)
-        },
+        }
         None => {
             warn!("Script not found for deletion: {}", script_id);
             Err(format!("Script not found: {}", script_id))
@@ -266,14 +270,17 @@ pub async fn execute_json_dsl_script(
 
     match engine.execute_script(&script).await {
         Ok(result) => {
-            info!("Script execution completed successfully: {} ({}ms)", script.name, result.execution_time_ms);
+            info!(
+                "Script execution completed successfully: {} ({}ms)",
+                script.name, result.execution_time_ms
+            );
             Ok(ExecutionResponse {
                 success: true,
                 execution_id,
                 result: Some(result),
                 error: None,
             })
-        },
+        }
         Err(e) => {
             error!("Script execution failed: {}", e);
             Ok(ExecutionResponse {
@@ -310,9 +317,12 @@ pub async fn execute_json_dsl_content(
     // Execute the script
     match engine.execute_script(&script).await {
         Ok(result) => {
-            info!("Direct script execution completed successfully ({}ms)", result.execution_time_ms);
+            info!(
+                "Direct script execution completed successfully ({}ms)",
+                result.execution_time_ms
+            );
             Ok(result)
-        },
+        }
         Err(e) => {
             error!("Direct script execution failed: {}", e);
             Err(e.to_string())
@@ -322,9 +332,7 @@ pub async fn execute_json_dsl_content(
 
 /// Get media status
 #[command]
-pub async fn get_media_status(
-    app: AppHandle,
-) -> Result<MediaStatus, String> {
+pub async fn get_media_status(app: AppHandle) -> Result<MediaStatus, String> {
     info!("Getting media status");
 
     let state = app.state::<JsonDslState>();
@@ -332,10 +340,14 @@ pub async fn get_media_status(
 
     match engine.get_media_status().await {
         Ok(status) => {
-            debug!("Media status: {} video streams, {} audio streams, {} recording sessions",
-                status.active_video_streams, status.active_audio_streams, status.active_recording_sessions);
+            debug!(
+                "Media status: {} video streams, {} audio streams, {} recording sessions",
+                status.active_video_streams,
+                status.active_audio_streams,
+                status.active_recording_sessions
+            );
             Ok(status)
-        },
+        }
         Err(e) => {
             error!("Failed to get media status: {}", e);
             Err(e.to_string())
@@ -345,9 +357,7 @@ pub async fn get_media_status(
 
 /// Stop current script execution
 #[command]
-pub async fn stop_script_execution(
-    app: AppHandle,
-) -> Result<bool, String> {
+pub async fn stop_script_execution(app: AppHandle) -> Result<bool, String> {
     info!("Stopping script execution");
 
     let state = app.state::<JsonDslState>();
@@ -359,7 +369,7 @@ pub async fn stop_script_execution(
         Ok(_) => {
             info!("Script execution stopped successfully");
             Ok(true)
-        },
+        }
         Err(e) => {
             error!("Failed to stop script execution: {}", e);
             Err(e.to_string())
@@ -374,16 +384,20 @@ pub async fn get_script_templates() -> Result<Vec<ScriptTemplate>, String> {
 
     let example_scripts = create_example_scripts();
 
-    let templates = example_scripts.into_iter().enumerate().map(|(index, script)| {
-        let category = if index == 0 { "simple" } else { "complex" };
-        ScriptTemplate {
-            id: format!("template_{}", index),
-            name: script.name.clone(),
-            description: script.description.clone().unwrap_or_default(),
-            category: category.to_string(),
-            template: script,
-        }
-    }).collect();
+    let templates = example_scripts
+        .into_iter()
+        .enumerate()
+        .map(|(index, script)| {
+            let category = if index == 0 { "simple" } else { "complex" };
+            ScriptTemplate {
+                id: format!("template_{}", index),
+                name: script.name.clone(),
+                description: script.description.clone().unwrap_or_default(),
+                category: category.to_string(),
+                template: script,
+            }
+        })
+        .collect();
 
     info!("Returning {} script templates", templates.len());
     Ok(templates)
@@ -413,7 +427,7 @@ pub async fn validate_json_dsl_script(
 
             info!("Script validation successful");
             Ok(validation_result)
-        },
+        }
         Err(e) => {
             error!("Script validation failed: {}", e);
             Ok(ScriptValidationResult {
@@ -467,13 +481,13 @@ pub async fn export_json_dsl_script(
                 Ok(_) => {
                     info!("Successfully exported script to: {}", file_path);
                     Ok(true)
-                },
+                }
                 Err(e) => {
                     error!("Failed to write script to file: {}", e);
                     Err(format!("Failed to write script to file: {}", e));
                 }
             }
-        },
+        }
         None => {
             warn!("Script not found for export: {}", script_id);
             Err(format!("Script not found: {}", script_id))
@@ -483,10 +497,7 @@ pub async fn export_json_dsl_script(
 
 /// Import script from file
 #[command]
-pub async fn import_json_dsl_script(
-    app: AppHandle,
-    file_path: String,
-) -> Result<String, String> {
+pub async fn import_json_dsl_script(app: AppHandle, file_path: String) -> Result<String, String> {
     info!("Importing script from: {}", file_path);
 
     // Read script from file (this would need proper file system access in Tauri)
@@ -515,7 +526,7 @@ pub async fn import_json_dsl_script(
 
             info!("Successfully imported script with ID: {}", script_id);
             Ok(script_id)
-        },
+        }
         Err(e) => {
             error!("Failed to parse imported script: {}", e);
             Err(format!("Failed to parse imported script: {}", e));
@@ -549,9 +560,10 @@ mod tests {
     fn test_execution_request() {
         let request = ExecutionRequest {
             script_id: "test_script".to_string(),
-            variables: Some(HashMap::from([
-                ("test_var".to_string(), serde_json::Value::String("test_value".to_string())),
-            ])),
+            variables: Some(HashMap::from([(
+                "test_var".to_string(),
+                serde_json::Value::String("test_value".to_string()),
+            )])),
             dry_run: Some(true),
         };
 
@@ -569,13 +581,11 @@ mod tests {
             category: "test".to_string(),
             template: JsonDslScript {
                 name: "Test Script".to_string(),
-                actions: vec![
-                    ScriptAction::Log {
-                        level: Some("info".to_string()),
-                        message: "Test".to_string(),
-                        include_variables: Some(false),
-                    },
-                ],
+                actions: vec![ScriptAction::Log {
+                    level: Some("info".to_string()),
+                    message: "Test".to_string(),
+                    include_variables: Some(false),
+                }],
                 ..Default::default()
             },
         };

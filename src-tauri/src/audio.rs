@@ -3,11 +3,11 @@
 //! Core audio playback system with MP3/PCM decoding, resampling,
 //! format conversion, volume control, and mute functionality
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
-use std::collections::VecDeque;
-use tracing::{info, error, warn, debug};
+use tracing::{debug, error, info, warn};
 
 // Audio decoding and processing
 use symphonia::core::audio::{AudioBufferRef, Signal};
@@ -19,8 +19,8 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
 // Audio resampling and conversion
-use rodio::{Sample, Source, OutputStream, OutputStreamHandle};
 use cpal::SampleFormat;
+use rodio::{OutputStream, OutputStreamHandle, Sample, Source};
 
 /// Audio sample formats supported by the pipeline
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,7 +39,7 @@ impl From<SampleFormat> for AudioSampleFormat {
             SampleFormat::I16 => AudioSampleFormat::I16,
             SampleFormat::U16 => AudioSampleFormat::U16,
             SampleFormat::I64 => AudioSampleFormat::I32, // Map I64 to I32 for now
-            _ => AudioSampleFormat::F32, // Default to F32
+            _ => AudioSampleFormat::F32,                 // Default to F32
         }
     }
 }
@@ -136,7 +136,10 @@ impl AudioBuffer {
 
     /// Add a frame to the buffer
     pub fn push_frame(&mut self, frame: AudioFrameData) -> Result<()> {
-        let mut frames = self.frames.lock().map_err(|_| anyhow!("Failed to lock audio buffer"))?;
+        let mut frames = self
+            .frames
+            .lock()
+            .map_err(|_| anyhow!("Failed to lock audio buffer"))?;
 
         if frames.len() >= self.max_size {
             frames.pop_front(); // Remove oldest frame
@@ -162,7 +165,10 @@ impl AudioBuffer {
 
     /// Clear all frames from buffer
     pub fn clear(&mut self) -> Result<()> {
-        let mut frames = self.frames.lock().map_err(|_| anyhow!("Failed to lock audio buffer"))?;
+        let mut frames = self
+            .frames
+            .lock()
+            .map_err(|_| anyhow!("Failed to lock audio buffer"))?;
         frames.clear();
         self.total_frames = 0;
         Ok(())
@@ -256,7 +262,8 @@ impl AudioValidator {
         let path = path.as_ref();
 
         // Check file extension
-        let extension = path.extension()
+        let extension = path
+            .extension()
             .and_then(|ext| ext.to_str())
             .ok_or_else(|| anyhow!("No file extension found"))?;
 
@@ -331,7 +338,11 @@ impl AudioConverter {
 
                 Ok(output)
             }
-            _ => Err(anyhow!("Unsupported format conversion: {:?} -> {:?}", input_format, output_format)),
+            _ => Err(anyhow!(
+                "Unsupported format conversion: {:?} -> {:?}",
+                input_format,
+                output_format
+            )),
         }
     }
 
@@ -350,7 +361,8 @@ impl AudioConverter {
         // Simple linear interpolation resampling
         // In a production system, you'd want to use a more sophisticated resampling algorithm
         let ratio = output_sample_rate as f64 / input_sample_rate as f64;
-        let samples_per_channel = input_data.len() / (sample_format.bytes_per_sample() * channels as usize);
+        let samples_per_channel =
+            input_data.len() / (sample_format.bytes_per_sample() * channels as usize);
         let output_samples_per_channel = (samples_per_channel as f64 * ratio) as usize;
 
         match sample_format {
@@ -362,7 +374,8 @@ impl AudioConverter {
                     )
                 };
 
-                let mut output_samples = vec![0.0f32; output_samples_per_channel * channels as usize];
+                let mut output_samples =
+                    vec![0.0f32; output_samples_per_channel * channels as usize];
 
                 for ch in 0..channels {
                     for i in 0..output_samples_per_channel {
@@ -370,7 +383,8 @@ impl AudioConverter {
                         let next_index = (input_index + 1).min(samples_per_channel - 1);
                         let fraction = (i as f64 / ratio) - input_index as f64;
 
-                        let input_val = input_samples[input_index * channels as usize + ch as usize];
+                        let input_val =
+                            input_samples[input_index * channels as usize + ch as usize];
                         let next_val = input_samples[next_index * channels as usize + ch as usize];
 
                         let interpolated = input_val + fraction * (next_val - input_val);
@@ -383,11 +397,15 @@ impl AudioConverter {
                         output_samples.as_ptr() as *const u8,
                         output_samples.len() * 4,
                     )
-                }.to_vec();
+                }
+                .to_vec();
 
                 Ok(output_bytes)
             }
-            _ => Err(anyhow!("Resampling not implemented for format: {:?}", sample_format)),
+            _ => Err(anyhow!(
+                "Resampling not implemented for format: {:?}",
+                sample_format
+            )),
         }
     }
 }
@@ -444,7 +462,8 @@ mod tests {
             &input_data,
             AudioSampleFormat::I16,
             AudioSampleFormat::F32,
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(output.len(), 8); // Two f32 samples = 8 bytes
     }

@@ -6,7 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Square, Circle, Download, Trash2, Folder, Settings, Clock } from "lucide-react";
+import { Square, Circle, Trash2, Folder, Settings, Clock } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
 import type { Recording, RecordingState, AppSettings } from "@/types";

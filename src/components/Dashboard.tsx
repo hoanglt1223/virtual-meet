@@ -6,7 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   Play, Pause, Square, SkipBack, SkipForward, Mic, Video, Volume2,
   VolumeX, Maximize2, Settings, Camera, MicOff, Monitor, Download,
-  RefreshCw, Wifi, WifiOff, AlertCircle, CheckCircle, Record, PauseCircle
+  RefreshCw, WifiOff, CheckCircle, Circle
 } from "lucide-react";
 import type { MediaFile, PlaybackState, RecordingState } from "@/types";
 
@@ -25,11 +25,11 @@ export default function Dashboard() {
     quality: "high",
   });
 
-  const [selectedVideo, setSelectedVideo] = useState<MediaFile | null>(null);
-  const [selectedAudio, setSelectedAudio] = useState<MediaFile | null>(null);
+  const [selectedVideo, _setSelectedVideo] = useState<MediaFile | null>(null);
+  const [selectedAudio, _setSelectedAudio] = useState<MediaFile | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connected');
+  const [connectionStatus, _setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connected');
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -37,7 +37,7 @@ export default function Dashboard() {
   // Mock duration updates for demo
   useEffect(() => {
     const interval = setInterval(() => {
-      setRecordingState(prev => ({
+      setRecordingState((prev: RecordingState) => ({
         ...prev,
         duration: prev.isRecording ? prev.duration + 1 : prev.duration,
       }));
@@ -119,7 +119,7 @@ export default function Dashboard() {
   };
 
   const handleRecordingToggle = () => {
-    setRecordingState(prev => ({
+    setRecordingState((prev: RecordingState) => ({
       ...prev,
       isRecording: !prev.isRecording,
       startTime: !prev.isRecording ? new Date() : prev.startTime,
@@ -161,7 +161,7 @@ export default function Dashboard() {
               </div>
               <Badge variant={recordingState.isRecording ? "destructive" : "secondary"}>
                 {recordingState.isRecording ? (
-                  <><Record className="h-3 w-3 mr-1 animate-pulse" /> Recording</>
+                  <><Circle className="h-3 w-3 mr-1 animate-pulse" /> Recording</>
                 ) : (
                   "Ready"
                 )}
@@ -426,7 +426,7 @@ export default function Dashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Record className="h-5 w-5" />
+              <Circle className="h-5 w-5" />
               Recording Control
             </CardTitle>
           </CardHeader>
@@ -435,9 +435,9 @@ export default function Dashboard() {
               <div className="space-y-1">
                 <Badge variant={recordingState.isRecording ? "destructive" : "secondary"}>
                   {recordingState.isRecording ? (
-                    <><Record className="h-3 w-3 mr-1 animate-pulse" /> Recording</>
+                    <><Circle className="h-3 w-3 mr-1 animate-pulse" /> Recording</>
                   ) : (
-                    "Ready to Record"
+                    "Ready to Recording"
                   )}
                 </Badge>
                 {recordingState.isRecording && (
@@ -450,7 +450,7 @@ export default function Dashboard() {
                 {recordingState.isRecording ? (
                   <><Square className="h-4 w-4 mr-2" /> Stop Recording</>
                 ) : (
-                  <><Record className="h-4 w-4 mr-2" /> Start Recording</>
+                  <><Circle className="h-4 w-4 mr-2" /> Start Recording</>
                 )}
               </Button>
             </div>

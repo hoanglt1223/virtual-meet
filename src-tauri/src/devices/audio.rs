@@ -4,20 +4,21 @@
 //! capabilities using WASAPI on Windows, with the ability to distinguish
 //! between physical and virtual audio devices.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Host, SampleFormat, StreamConfig, SupportedStreamConfigRange};
 use std::collections::HashMap;
-use tracing::{info, warn, debug, error};
+use tracing::{debug, error, info, warn};
+use windows::core::{Interface, HSTRING};
 use windows::Win32::Media::Audio::{
-    IMMDeviceEnumerator, IMMDeviceCollection, IMMDevice,
-    DEVICE_STATE_ACTIVE, DEVICE_STATE_DISABLED, DEVICE_STATE_NOTPRESENT,
-    DEVICE_STATE_UNPLUGGED, eRender, eCapture, eAll,
+    eAll, eCapture, eRender, IMMDevice, IMMDeviceCollection, IMMDeviceEnumerator,
+    DEVICE_STATE_ACTIVE, DEVICE_STATE_DISABLED, DEVICE_STATE_NOTPRESENT, DEVICE_STATE_UNPLUGGED,
 };
 use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
-use windows::core::{Interface, HSTRING};
 
-use crate::devices::{DeviceInfo, DeviceType, DeviceCategory, DeviceOrigin, FullDeviceInfo, DeviceCapabilities};
+use crate::devices::{
+    DeviceCapabilities, DeviceCategory, DeviceInfo, DeviceOrigin, DeviceType, FullDeviceInfo,
+};
 
 /// Known virtual audio device identifiers and patterns
 const VIRTUAL_AUDIO_PATTERNS: &[&str] = &[
@@ -33,7 +34,7 @@ const VIRTUAL_AUDIO_PATTERNS: &[&str] = &[
     "virtual microphone",
     "virtual speaker",
     "wave link",
-    "blackhole", // macOS virtual audio
+    "blackhole",   // macOS virtual audio
     "soundflower", // macOS virtual audio
     "loopback",
 ];
@@ -77,8 +78,14 @@ impl AudioDeviceEnumerator {
 
         Self {
             host,
-            virtual_patterns: VIRTUAL_AUDIO_PATTERNS.iter().map(|s| s.to_lowercase()).collect(),
-            physical_manufacturers: PHYSICAL_AUDIO_MANUFACTURERS.iter().map(|s| s.to_lowercase()).collect(),
+            virtual_patterns: VIRTUAL_AUDIO_PATTERNS
+                .iter()
+                .map(|s| s.to_lowercase())
+                .collect(),
+            physical_manufacturers: PHYSICAL_AUDIO_MANUFACTURERS
+                .iter()
+                .map(|s| s.to_lowercase())
+                .collect(),
         }
     }
 
@@ -113,7 +120,10 @@ impl AudioDeviceEnumerator {
         // Use CPAL for cross-platform enumeration
         if let Ok(input_devices) = self.host.input_devices() {
             for device in input_devices {
-                if let Ok(full_info) = self.convert_cpal_device(&device, DeviceCategory::Input).await {
+                if let Ok(full_info) = self
+                    .convert_cpal_device(&device, DeviceCategory::Input)
+                    .await
+                {
                     devices.push(full_info);
                 }
             }
@@ -142,7 +152,10 @@ impl AudioDeviceEnumerator {
         // Use CPAL for cross-platform enumeration
         if let Ok(output_devices) = self.host.output_devices() {
             for device in output_devices {
-                if let Ok(full_info) = self.convert_cpal_device(&device, DeviceCategory::Output).await {
+                if let Ok(full_info) = self
+                    .convert_cpal_device(&device, DeviceCategory::Output)
+                    .await
+                {
                     devices.push(full_info);
                 }
             }
@@ -170,27 +183,30 @@ impl AudioDeviceEnumerator {
         device: &Device,
         category: DeviceCategory,
     ) -> Result<FullDeviceInfo> {
-        let name = device.name().unwrap_or_else(|_| "Unknown Audio Device".to_string());
-        let device_id = format!("cpal-{:?}", device.default_input_config().map(|c| c.sample_rate()));
+        let name = device
+            .name()
+            .unwrap_or_else(|_| "Unknown Audio Device".to_string());
+        let device_id = format!(
+            "cpal-{:?}",
+            device.default_input_config().map(|c| c.sample_rate())
+        );
 
         // Determine if device is virtual or physical
         let origin = self.determine_device_origin(&name, &device_id);
 
         // Create basic device info
-        let mut device_info = DeviceInfo::new(
-            device_id,
-            name.clone(),
-            DeviceType::Audio,
-            category,
-            origin,
-        );
+        let mut device_info =
+            DeviceInfo::new(device_id, name.clone(), DeviceType::Audio, category, origin);
 
         // Add device description
-        device_info.description = format!("Audio {} device", match category {
-            DeviceCategory::Input => "input",
-            DeviceCategory::Output => "output",
-            DeviceCategory::Both => "input/output",
-        });
+        device_info.description = format!(
+            "Audio {} device",
+            match category {
+                DeviceCategory::Input => "input",
+                DeviceCategory::Output => "output",
+                DeviceCategory::Both => "input/output",
+            }
+        );
 
         // Add CPAL-specific properties
         if let Ok(default_config) = device.default_input_config() {
@@ -242,7 +258,10 @@ impl AudioDeviceEnumerator {
 
         // Check device ID for virtual indicators
         let id_lower = device_id.to_lowercase();
-        if id_lower.contains("virtual") || id_lower.contains("cable") || id_lower.contains("voicemeeter") {
+        if id_lower.contains("virtual")
+            || id_lower.contains("cable")
+            || id_lower.contains("voicemeeter")
+        {
             return DeviceOrigin::Virtual;
         }
 
@@ -254,11 +273,12 @@ impl AudioDeviceEnumerator {
         }
 
         // Additional heuristics
-        if name_lower.contains("realtek") ||
-           name_lower.contains("high definition audio") ||
-           name_lower.contains("nvidia high definition audio") ||
-           name_lower.contains("amd high definition audio") ||
-           name_lower.contains("intel display audio") {
+        if name_lower.contains("realtek")
+            || name_lower.contains("high definition audio")
+            || name_lower.contains("nvidia high definition audio")
+            || name_lower.contains("amd high definition audio")
+            || name_lower.contains("intel display audio")
+        {
             return DeviceOrigin::Physical;
         }
 
@@ -274,13 +294,23 @@ impl AudioDeviceEnumerator {
         if let Ok(configs) = device.supported_input_configs() {
             for config in configs {
                 // Add sample rate
-                if !capabilities.supported_sample_rates.contains(&config.sample_rate().0) {
-                    capabilities.supported_sample_rates.push(config.sample_rate().0);
+                if !capabilities
+                    .supported_sample_rates
+                    .contains(&config.sample_rate().0)
+                {
+                    capabilities
+                        .supported_sample_rates
+                        .push(config.sample_rate().0);
                 }
 
                 // Add channel count
-                if !capabilities.supported_channel_counts.contains(&config.channels()) {
-                    capabilities.supported_channel_counts.push(config.channels());
+                if !capabilities
+                    .supported_channel_counts
+                    .contains(&config.channels())
+                {
+                    capabilities
+                        .supported_channel_counts
+                        .push(config.channels());
                 }
 
                 // Add sample format
@@ -293,23 +323,29 @@ impl AudioDeviceEnumerator {
                 if let Some(buffer_size) = config.buffer_size() {
                     match buffer_size {
                         cpal::BufferSize::Range(min, max) => {
-                            if let Some((existing_min, existing_max)) = capabilities.buffer_size_range {
+                            if let Some((existing_min, existing_max)) =
+                                capabilities.buffer_size_range
+                            {
                                 capabilities.buffer_size_range = Some((
                                     existing_min.min(*min as usize),
                                     existing_max.max(*max as usize),
                                 ));
                             } else {
-                                capabilities.buffer_size_range = Some((*min as usize, *max as usize));
+                                capabilities.buffer_size_range =
+                                    Some((*min as usize, *max as usize));
                             }
                         }
                         cpal::BufferSize::Fixed(size) => {
-                            if let Some((existing_min, existing_max)) = capabilities.buffer_size_range {
+                            if let Some((existing_min, existing_max)) =
+                                capabilities.buffer_size_range
+                            {
                                 capabilities.buffer_size_range = Some((
                                     existing_min.min(*size as usize),
                                     existing_max.max(*size as usize),
                                 ));
                             } else {
-                                capabilities.buffer_size_range = Some((*size as usize, *size as usize));
+                                capabilities.buffer_size_range =
+                                    Some((*size as usize, *size as usize));
                             }
                         }
                     }
@@ -320,13 +356,23 @@ impl AudioDeviceEnumerator {
         if let Ok(configs) = device.supported_output_configs() {
             for config in configs {
                 // Add sample rate
-                if !capabilities.supported_sample_rates.contains(&config.sample_rate().0) {
-                    capabilities.supported_sample_rates.push(config.sample_rate().0);
+                if !capabilities
+                    .supported_sample_rates
+                    .contains(&config.sample_rate().0)
+                {
+                    capabilities
+                        .supported_sample_rates
+                        .push(config.sample_rate().0);
                 }
 
                 // Add channel count
-                if !capabilities.supported_channel_counts.contains(&config.channels()) {
-                    capabilities.supported_channel_counts.push(config.channels());
+                if !capabilities
+                    .supported_channel_counts
+                    .contains(&config.channels())
+                {
+                    capabilities
+                        .supported_channel_counts
+                        .push(config.channels());
                 }
 
                 // Add sample format
@@ -343,8 +389,12 @@ impl AudioDeviceEnumerator {
         capabilities.supported_formats.sort_unstable();
 
         // Add common capability flags
-        capabilities.capability_flags.push("audio_capture".to_string());
-        capabilities.capability_flags.push("audio_playback".to_string());
+        capabilities
+            .capability_flags
+            .push("audio_capture".to_string());
+        capabilities
+            .capability_flags
+            .push("audio_playback".to_string());
 
         Ok(capabilities)
     }
@@ -361,13 +411,17 @@ impl AudioDeviceEnumerator {
                 CLSCTX_ALL,
             )?;
 
-            let collection: IMMDeviceCollection = enumerator.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)?;
+            let collection: IMMDeviceCollection =
+                enumerator.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)?;
 
             let count = collection.GetCount()?;
             for i in 0..count {
                 let imm_device: IMMDevice = collection.Item(i)?;
 
-                if let Ok(device_info) = self.convert_wasapi_device(&imm_device, DeviceCategory::Input).await {
+                if let Ok(device_info) = self
+                    .convert_wasapi_device(&imm_device, DeviceCategory::Input)
+                    .await
+                {
                     devices.push(device_info);
                 }
             }
@@ -388,13 +442,17 @@ impl AudioDeviceEnumerator {
                 CLSCTX_ALL,
             )?;
 
-            let collection: IMMDeviceCollection = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)?;
+            let collection: IMMDeviceCollection =
+                enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)?;
 
             let count = collection.GetCount()?;
             for i in 0..count {
                 let imm_device: IMMDevice = collection.Item(i)?;
 
-                if let Ok(device_info) = self.convert_wasapi_device(&imm_device, DeviceCategory::Output).await {
+                if let Ok(device_info) = self
+                    .convert_wasapi_device(&imm_device, DeviceCategory::Output)
+                    .await
+                {
                     devices.push(device_info);
                 }
             }
@@ -450,19 +508,26 @@ impl AudioDeviceEnumerator {
             device_info.add_property("device_state".to_string(), "active".to_string());
 
             // Try to get additional device properties
-            if let Ok(manufacturer) = properties.GetValue(&windows::Win32::Media::Audio::DEVPKEY_Device_Manufacturer) {
+            if let Ok(manufacturer) =
+                properties.GetValue(&windows::Win32::Media::Audio::DEVPKEY_Device_Manufacturer)
+            {
                 device_info.add_property("manufacturer".to_string(), manufacturer.to_string());
             }
 
-            if let Ok(device_class) = properties.GetValue(&windows::Win32::Media::Audio::DEVPKEY_Device_Class) {
+            if let Ok(device_class) =
+                properties.GetValue(&windows::Win32::Media::Audio::DEVPKEY_Device_Class)
+            {
                 device_info.add_property("device_class".to_string(), device_class.to_string());
             }
 
             // Detect capabilities (basic set for WASAPI)
             let mut capabilities = DeviceCapabilities::new();
-            capabilities.supported_sample_rates = vec![8000, 11025, 16000, 22050, 44100, 48000, 88200, 96000, 176400, 192000];
+            capabilities.supported_sample_rates = vec![
+                8000, 11025, 16000, 22050, 44100, 48000, 88200, 96000, 176400, 192000,
+            ];
             capabilities.supported_channel_counts = vec![1, 2, 4, 6, 8];
-            capabilities.supported_formats = vec!["I16".to_string(), "I32".to_string(), "F32".to_string()];
+            capabilities.supported_formats =
+                vec!["I16".to_string(), "I32".to_string(), "F32".to_string()];
             capabilities.capability_flags.push("wasapi".to_string());
 
             Ok(FullDeviceInfo::new(device_info, capabilities))
@@ -470,7 +535,10 @@ impl AudioDeviceEnumerator {
     }
 
     /// Get default audio device for a given category
-    pub async fn get_default_device(&self, category: DeviceCategory) -> Result<Option<FullDeviceInfo>> {
+    pub async fn get_default_device(
+        &self,
+        category: DeviceCategory,
+    ) -> Result<Option<FullDeviceInfo>> {
         let device = match category {
             DeviceCategory::Input => self.host.default_input_device(),
             DeviceCategory::Output => self.host.default_output_device(),
@@ -510,12 +578,18 @@ pub struct AudioDeviceUtils;
 impl AudioDeviceUtils {
     /// Check if a device supports a specific sample rate
     pub fn supports_sample_rate(device: &FullDeviceInfo, sample_rate: u32) -> bool {
-        device.capabilities.supported_sample_rates.contains(&sample_rate)
+        device
+            .capabilities
+            .supported_sample_rates
+            .contains(&sample_rate)
     }
 
     /// Check if a device supports a specific channel count
     pub fn supports_channel_count(device: &FullDeviceInfo, channels: u32) -> bool {
-        device.capabilities.supported_channel_counts.contains(&channels)
+        device
+            .capabilities
+            .supported_channel_counts
+            .contains(&channels)
     }
 
     /// Check if a device supports a specific format
@@ -525,17 +599,23 @@ impl AudioDeviceUtils {
 
     /// Get recommended configuration for a device
     pub fn get_recommended_config(device: &FullDeviceInfo) -> Option<(u32, u32, String)> {
-        let sample_rate = device.capabilities.supported_sample_rates
+        let sample_rate = device
+            .capabilities
+            .supported_sample_rates
             .iter()
             .find(|&&sr| sr == 44100 || sr == 48000)
             .or_else(|| device.capabilities.supported_sample_rates.first())?;
 
-        let channels = device.capabilities.supported_channel_counts
+        let channels = device
+            .capabilities
+            .supported_channel_counts
             .iter()
             .find(|&&c| c == 2)
             .or_else(|| device.capabilities.supported_channel_counts.first())?;
 
-        let format = device.capabilities.supported_formats
+        let format = device
+            .capabilities
+            .supported_formats
             .iter()
             .find(|f| f == "F32" || f == "I32")
             .or_else(|| device.capabilities.supported_formats.first())?

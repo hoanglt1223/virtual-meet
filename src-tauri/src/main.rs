@@ -1,29 +1,29 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod media;
-mod devices;
-mod recording;
-mod scripting;
-mod hotkeys;
-mod commands;
-mod commands_media;
-mod commands_settings;
-mod commands_hotkeys;
-mod commands_scripting;
-mod commands_recording;
-mod commands_json_dsl;
-mod error;
-mod virtual_device;
 mod audio;
 mod audio_decoder;
 mod audio_processor;
-mod media_library;
-mod metadata_extractor;
-mod thumbnail_generator;
-mod media_scanner;
+mod commands;
+mod commands_hotkeys;
+mod commands_json_dsl;
+mod commands_media;
+mod commands_recording;
+mod commands_scripting;
+mod commands_settings;
+mod devices;
+mod error;
+mod hotkeys;
 mod json_dsl;
 mod json_dsl_integration;
+mod media;
+mod media_library;
+mod media_scanner;
+mod metadata_extractor;
+mod recording;
+mod scripting;
+mod thumbnail_generator;
+mod virtual_device;
 
 use tauri::Manager;
 use tracing_subscriber;
@@ -52,7 +52,9 @@ async fn main() {
             // Register default global hotkeys
             let app_handle_for_hotkeys = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = commands_hotkeys::register_default_hotkeys(&app_handle_for_hotkeys).await {
+                if let Err(e) =
+                    commands_hotkeys::register_default_hotkeys(&app_handle_for_hotkeys).await
+                {
                     tracing::error!("Failed to register default hotkeys: {}", e);
                 } else {
                     tracing::info!("Default hotkeys registered successfully");
@@ -61,7 +63,8 @@ async fn main() {
 
             // Set up global hotkey event listener
             let app_handle_for_listener = app.handle().clone();
-            if let Err(e) = commands_hotkeys::setup_global_hotkey_listener(app_handle_for_listener) {
+            if let Err(e) = commands_hotkeys::setup_global_hotkey_listener(app_handle_for_listener)
+            {
                 tracing::error!("Failed to setup global hotkey listener: {}", e);
             } else {
                 tracing::info!("Global hotkey listener setup successfully");
@@ -132,7 +135,6 @@ async fn main() {
             commands::get_virtual_devices,
             commands::get_physical_devices,
             commands::refresh_device_list,
-
             // Virtual device management commands
             commands::virtual_devices::initialize_webcam,
             commands::virtual_devices::initialize_microphone,
@@ -154,7 +156,6 @@ async fn main() {
             commands::virtual_devices::get_webcam_video_info,
             commands::virtual_devices::get_webcam_buffer_status,
             commands::virtual_devices::get_microphone_buffer_status,
-
             // Media control commands
             commands_media::initialize_media_library,
             commands_media::load_media_library,
@@ -165,7 +166,6 @@ async fn main() {
             commands_media::search_media_library_enhanced,
             commands_media::get_media_library_status,
             commands_media::cleanup_media_library,
-
             // Recording commands (from commands_recording module)
             commands_recording::start_recording,
             commands_recording::stop_recording,
@@ -173,7 +173,6 @@ async fn main() {
             commands_recording::update_recording_config,
             commands_recording::get_recording_presets,
             commands_recording::test_recording_capabilities,
-
             // Settings commands
             commands_settings::get_settings,
             commands_settings::update_settings,
@@ -182,7 +181,6 @@ async fn main() {
             commands_settings::import_settings,
             commands_settings::get_available_video_devices,
             commands_settings::get_available_audio_devices,
-
             // Hotkey commands
             commands_hotkeys::register_hotkey,
             commands_hotkeys::unregister_hotkey,
@@ -192,7 +190,6 @@ async fn main() {
             commands_hotkeys::execute_hotkey_action,
             commands_hotkeys::check_hotkey_conflicts,
             commands_hotkeys::get_default_hotkeys,
-
             // Scripting commands
             commands_scripting::execute_script,
             commands_scripting::create_script,
@@ -202,7 +199,6 @@ async fn main() {
             commands_scripting::get_script,
             commands_scripting::validate_script,
             commands_scripting::get_script_templates,
-
             // JSON DSL commands
             commands_json_dsl::parse_json_dsl_script,
             commands_json_dsl::save_json_dsl_script,

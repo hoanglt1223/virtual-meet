@@ -5,11 +5,11 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tauri::{command, State, AppHandle};
-use tracing::{info, error, warn, debug};
+use tauri::{command, AppHandle, State};
+use tracing::{debug, error, info, warn};
 
+use crate::hotkeys::{HotkeyDefinition, HotkeyManager};
 use crate::AppState;
-use crate::hotkeys::{HotkeyManager, HotkeyDefinition};
 
 /// Hotkey action types
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -154,7 +154,10 @@ pub async fn register_hotkey(
     request: RegisterHotkeyRequest,
     app: AppHandle,
 ) -> Result<RegisterHotkeyResponse, String> {
-    info!("Registering hotkey: {} ({})", request.name, request.key_combination);
+    info!(
+        "Registering hotkey: {} ({})",
+        request.name, request.key_combination
+    );
 
     // Validate key combination format
     if !is_valid_key_combination(&request.key_combination) {
@@ -172,7 +175,11 @@ pub async fn register_hotkey(
                 success: false,
                 message: format!(
                     "Hotkey conflicts with existing hotkeys: {}",
-                    conflicts.iter().map(|h| &h.name).collect::<Vec<_>>().join(", ")
+                    conflicts
+                        .iter()
+                        .map(|h| &h.name)
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ),
                 hotkey_id: None,
             });
@@ -193,14 +200,21 @@ pub async fn register_hotkey(
     // In a real implementation, you would register the hotkey with the OS
     // For now, we'll just store it in our state
     let hotkey_state = app.state::<std::sync::Mutex<HotkeyState>>();
-    let mut state = hotkey_state.lock().map_err(|e| format!("Failed to lock hotkey state: {}", e))?;
+    let mut state = hotkey_state
+        .lock()
+        .map_err(|e| format!("Failed to lock hotkey state: {}", e))?;
 
-    state.registered_hotkeys.insert(request.id.clone(), hotkey_definition.clone());
-    state.hotkey_stats.insert(request.id.clone(), HotkeyStats {
-        trigger_count: 0,
-        last_triggered: None,
-        average_trigger_interval_ms: None,
-    });
+    state
+        .registered_hotkeys
+        .insert(request.id.clone(), hotkey_definition.clone());
+    state.hotkey_stats.insert(
+        request.id.clone(),
+        HotkeyStats {
+            trigger_count: 0,
+            last_triggered: None,
+            average_trigger_interval_ms: None,
+        },
+    );
 
     info!("Hotkey registered successfully: {}", request.name);
 
@@ -220,7 +234,9 @@ pub async fn unregister_hotkey(
     info!("Unregistering hotkey: {}", hotkey_id);
 
     let hotkey_state = app.state::<std::sync::Mutex<HotkeyState>>();
-    let mut state = hotkey_state.lock().map_err(|e| format!("Failed to lock hotkey state: {}", e))?;
+    let mut state = hotkey_state
+        .lock()
+        .map_err(|e| format!("Failed to lock hotkey state: {}", e))?;
 
     match state.registered_hotkeys.remove(&hotkey_id) {
         Some(hotkey) => {
@@ -233,7 +249,7 @@ pub async fn unregister_hotkey(
                 message: format!("Hotkey '{}' unregistered successfully", hotkey.name),
                 hotkey_id: Some(hotkey_id),
             })
-        },
+        }
         None => Ok(RegisterHotkeyResponse {
             success: false,
             message: format!("Hotkey with ID '{}' not found", hotkey_id),
@@ -248,7 +264,9 @@ pub async fn get_registered_hotkeys(app: AppHandle) -> Result<HotkeyListResponse
     info!("Getting registered hotkeys");
 
     let hotkey_state = app.state::<std::sync::Mutex<HotkeyState>>();
-    let state = hotkey_state.lock().map_err(|e| format!("Failed to lock hotkey state: {}", e))?;
+    let state = hotkey_state
+        .lock()
+        .map_err(|e| format!("Failed to lock hotkey state: {}", e))?;
 
     let hotkeys: Vec<HotkeyDefinition> = state.registered_hotkeys.values().cloned().collect();
 
@@ -268,9 +286,14 @@ pub async fn get_hotkey_status(
     info!("Getting hotkey status: {}", hotkey_id);
 
     let hotkey_state = app.state::<std::sync::Mutex<HotkeyState>>();
-    let state = hotkey_state.lock().map_err(|e| format!("Failed to lock hotkey state: {}", e))?;
+    let state = hotkey_state
+        .lock()
+        .map_err(|e| format!("Failed to lock hotkey state: {}", e))?;
 
-    match (state.registered_hotkeys.get(&hotkey_id), state.hotkey_stats.get(&hotkey_id)) {
+    match (
+        state.registered_hotkeys.get(&hotkey_id),
+        state.hotkey_stats.get(&hotkey_id),
+    ) {
         (Some(hotkey), Some(stats)) => Ok(HotkeyStatusResponse {
             success: true,
             hotkey_id: hotkey_id,
@@ -300,7 +323,9 @@ pub async fn set_hotkey_enabled(
     info!("Setting hotkey {} enabled to: {}", hotkey_id, enabled);
 
     let hotkey_state = app.state::<std::sync::Mutex<HotkeyState>>();
-    let mut state = hotkey_state.lock().map_err(|e| format!("Failed to lock hotkey state: {}", e))?;
+    let mut state = hotkey_state
+        .lock()
+        .map_err(|e| format!("Failed to lock hotkey state: {}", e))?;
 
     match state.registered_hotkeys.get_mut(&hotkey_id) {
         Some(hotkey) => {
@@ -310,10 +335,14 @@ pub async fn set_hotkey_enabled(
 
             Ok(RegisterHotkeyResponse {
                 success: true,
-                message: format!("Hotkey '{}' {}", hotkey.name, if enabled { "enabled" } else { "disabled" }),
+                message: format!(
+                    "Hotkey '{}' {}",
+                    hotkey.name,
+                    if enabled { "enabled" } else { "disabled" }
+                ),
                 hotkey_id: Some(hotkey_id),
             })
-        },
+        }
         None => Ok(RegisterHotkeyResponse {
             success: false,
             message: format!("Hotkey with ID '{}' not found", hotkey_id),
@@ -361,7 +390,8 @@ pub async fn check_hotkey_conflicts(
 ) -> Result<CheckHotkeyConflictResponse, String> {
     info!("Checking hotkey conflicts for: {}", request.key_combination);
 
-    let conflicts = check_key_combination_conflicts(&request.key_combination, request.exclude_hotkey_id);
+    let conflicts =
+        check_key_combination_conflicts(&request.key_combination, request.exclude_hotkey_id);
 
     Ok(CheckHotkeyConflictResponse {
         success: true,
@@ -417,7 +447,6 @@ pub async fn get_default_hotkeys() -> Result<HotkeyListResponse, String> {
             global: true,
             category: HotkeyCategory::Recording,
         },
-
         // Recording Controls - F5-F7 keys
         HotkeyDefinition {
             id: "start_recording_f5".to_string(),
@@ -449,7 +478,6 @@ pub async fn get_default_hotkeys() -> Result<HotkeyListResponse, String> {
             global: true,
             category: HotkeyCategory::Media,
         },
-
         // Audio Controls - F8-F10 keys
         HotkeyDefinition {
             id: "start_audio_f8".to_string(),
@@ -481,7 +509,6 @@ pub async fn get_default_hotkeys() -> Result<HotkeyListResponse, String> {
             global: true,
             category: HotkeyCategory::Media,
         },
-
         // System Controls - F11-F12 keys
         HotkeyDefinition {
             id: "settings_f11".to_string(),
@@ -503,7 +530,6 @@ pub async fn get_default_hotkeys() -> Result<HotkeyListResponse, String> {
             global: true,
             category: HotkeyCategory::System,
         },
-
         // Alternative Volume Controls - Shift+F keys
         HotkeyDefinition {
             id: "volume_up_shift_f11".to_string(),
@@ -525,7 +551,6 @@ pub async fn get_default_hotkeys() -> Result<HotkeyListResponse, String> {
             global: true,
             category: HotkeyCategory::Media,
         },
-
         // Keep some traditional hotkeys for compatibility
         HotkeyDefinition {
             id: "start_video".to_string(),
@@ -644,9 +669,13 @@ fn is_valid_key_combination(combination: &str) -> bool {
             _ if part.len() == 1 => has_key = true,
             _ => {
                 // Check for function keys, arrow keys, etc.
-                if part.starts_with("F") || part.starts_with("NUMPAD") ||
-                   part == "SPACE" || part == "ENTER" || part == "ESCAPE" ||
-                   part.ends_with("ARROW") {
+                if part.starts_with("F")
+                    || part.starts_with("NUMPAD")
+                    || part == "SPACE"
+                    || part == "ENTER"
+                    || part == "ESCAPE"
+                    || part.ends_with("ARROW")
+                {
                     has_key = true;
                 }
             }
@@ -669,14 +698,21 @@ fn check_key_combination_conflicts(
 /// Determine hotkey category from action
 fn determine_hotkey_category(action: &HotkeyAction) -> HotkeyCategory {
     match action {
-        HotkeyAction::StartVideo | HotkeyAction::StopVideo | HotkeyAction::StartAudio |
-        HotkeyAction::StopAudio | HotkeyAction::ToggleMute | HotkeyAction::VolumeUp |
-        HotkeyAction::VolumeDown | HotkeyAction::SwitchVideo | HotkeyAction::SwitchAudio |
-        HotkeyAction::ToggleCamera | HotkeyAction::ToggleMicrophone => HotkeyCategory::Media,
+        HotkeyAction::StartVideo
+        | HotkeyAction::StopVideo
+        | HotkeyAction::StartAudio
+        | HotkeyAction::StopAudio
+        | HotkeyAction::ToggleMute
+        | HotkeyAction::VolumeUp
+        | HotkeyAction::VolumeDown
+        | HotkeyAction::SwitchVideo
+        | HotkeyAction::SwitchAudio
+        | HotkeyAction::ToggleCamera
+        | HotkeyAction::ToggleMicrophone => HotkeyCategory::Media,
 
         HotkeyAction::StartRecording | HotkeyAction::StopRecording | HotkeyAction::Screenshot => {
             HotkeyCategory::Recording
-        },
+        }
 
         HotkeyAction::Settings | HotkeyAction::Quit => HotkeyCategory::System,
         HotkeyAction::Custom(_) => HotkeyCategory::Custom,
@@ -700,9 +736,9 @@ async fn execute_action(
                 Err(e) => Ok(serde_json::json!({
                     "status": "error",
                     "message": format!("Failed to start video: {}", e)
-                }))
+                })),
             }
-        },
+        }
         HotkeyAction::StopVideo => {
             // Stop video streaming using device system
             match crate::commands::stop_streaming(None).await {
@@ -713,9 +749,9 @@ async fn execute_action(
                 Err(e) => Ok(serde_json::json!({
                     "status": "error",
                     "message": format!("Failed to stop video: {}", e)
-                }))
+                })),
             }
-        },
+        }
         HotkeyAction::StartAudio => {
             // Start audio streaming using device system
             match crate::commands::start_audio_streaming(None, None, None, None).await {
@@ -726,9 +762,9 @@ async fn execute_action(
                 Err(e) => Ok(serde_json::json!({
                     "status": "error",
                     "message": format!("Failed to start audio: {}", e)
-                }))
+                })),
             }
-        },
+        }
         HotkeyAction::StopAudio => {
             // Stop audio streaming using device system
             match crate::commands::stop_audio_streaming(None).await {
@@ -739,9 +775,9 @@ async fn execute_action(
                 Err(e) => Ok(serde_json::json!({
                     "status": "error",
                     "message": format!("Failed to stop audio: {}", e)
-                }))
+                })),
             }
-        },
+        }
         HotkeyAction::StartRecording => {
             // Start recording using recording system
             match crate::commands_recording::start_recording(None).await {
@@ -752,9 +788,9 @@ async fn execute_action(
                 Err(e) => Ok(serde_json::json!({
                     "status": "error",
                     "message": format!("Failed to start recording: {}", e)
-                }))
+                })),
             }
-        },
+        }
         HotkeyAction::StopRecording => {
             // Stop recording using recording system
             match crate::commands_recording::stop_recording(app.clone()).await {
@@ -765,9 +801,9 @@ async fn execute_action(
                 Err(e) => Ok(serde_json::json!({
                     "status": "error",
                     "message": format!("Failed to stop recording: {}", e)
-                }))
+                })),
             }
-        },
+        }
         HotkeyAction::ToggleMute => {
             // Toggle microphone mute using device system
             match crate::commands::toggle_microphone_mute(None).await {
@@ -778,9 +814,9 @@ async fn execute_action(
                 Err(e) => Ok(serde_json::json!({
                     "status": "error",
                     "message": format!("Failed to toggle mute: {}", e)
-                }))
+                })),
             }
-        },
+        }
         HotkeyAction::Screenshot => {
             // Take screenshot - placeholder for now
             info!("Screenshot hotkey triggered");
@@ -788,7 +824,7 @@ async fn execute_action(
                 "status": "captured",
                 "message": "Screenshot taken"
             }))
-        },
+        }
         HotkeyAction::ToggleCamera => {
             // Toggle camera - placeholder for now
             info!("Toggle camera hotkey triggered");
@@ -796,7 +832,7 @@ async fn execute_action(
                 "status": "toggled",
                 "message": "Camera toggled"
             }))
-        },
+        }
         HotkeyAction::ToggleMicrophone => {
             // Toggle microphone - placeholder for now
             info!("Toggle microphone hotkey triggered");
@@ -804,7 +840,7 @@ async fn execute_action(
                 "status": "toggled",
                 "message": "Microphone toggled"
             }))
-        },
+        }
         HotkeyAction::VolumeUp => {
             // Volume up - placeholder for now
             info!("Volume up hotkey triggered");
@@ -812,7 +848,7 @@ async fn execute_action(
                 "status": "adjusted",
                 "message": "Volume increased"
             }))
-        },
+        }
         HotkeyAction::VolumeDown => {
             // Volume down - placeholder for now
             info!("Volume down hotkey triggered");
@@ -820,7 +856,7 @@ async fn execute_action(
                 "status": "adjusted",
                 "message": "Volume decreased"
             }))
-        },
+        }
         HotkeyAction::Settings => {
             // Open settings window or focus existing one
             info!("Settings hotkey triggered");
@@ -828,7 +864,7 @@ async fn execute_action(
                 "status": "opened",
                 "message": "Settings opened"
             }))
-        },
+        }
         HotkeyAction::Quit => {
             // Quit the application
             info!("Quit action triggered by hotkey");
@@ -837,13 +873,16 @@ async fn execute_action(
                 "status": "quitting",
                 "message": "Application will quit"
             }))
-        },
+        }
         HotkeyAction::Custom(action_name) => {
             // Execute custom action using scripting system
             let script_content = parameters
                 .and_then(|p| p.get("script"))
                 .and_then(|v| v.as_str())
-                .unwrap_or(&format!("print!(\"Executing custom action: {}\");", action_name));
+                .unwrap_or(&format!(
+                    "print!(\"Executing custom action: {}\");",
+                    action_name
+                ));
 
             match crate::scripting::execute_script_async(script_content.to_string()).await {
                 Ok(result) => Ok(serde_json::json!({
@@ -857,9 +896,9 @@ async fn execute_action(
                     "action": action_name,
                     "error": e.to_string(),
                     "message": format!("Failed to execute custom action '{}': {}", action_name, e)
-                }))
+                })),
             }
-        },
+        }
         _ => {
             warn!("Hotkey action not implemented: {:?}", action);
             Ok(serde_json::json!({
@@ -883,7 +922,10 @@ pub async fn register_default_hotkeys(app: &AppHandle) -> Result<()> {
     // Get default hotkeys
     let defaults = get_default_hotkeys().await?;
     if !defaults.success {
-        return Err(anyhow::anyhow!("Failed to get default hotkeys: {}", defaults.message));
+        return Err(anyhow::anyhow!(
+            "Failed to get default hotkeys: {}",
+            defaults.message
+        ));
     }
 
     // Register all enabled default hotkeys
@@ -902,9 +944,15 @@ pub async fn register_default_hotkeys(app: &AppHandle) -> Result<()> {
             match register_hotkey(request, app.clone()).await {
                 Ok(response) => {
                     if response.success {
-                        info!("Successfully registered default hotkey: {}", hotkey_def.name);
+                        info!(
+                            "Successfully registered default hotkey: {}",
+                            hotkey_def.name
+                        );
                     } else {
-                        warn!("Failed to register hotkey '{}': {}", hotkey_def.name, response.message);
+                        warn!(
+                            "Failed to register hotkey '{}': {}",
+                            hotkey_def.name, response.message
+                        );
                     }
                 }
                 Err(e) => {

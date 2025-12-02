@@ -6,12 +6,11 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{Manager, Runtime};
-use tracing::{info, error, warn};
+use tracing::{error, info, warn};
 
 use crate::recording::{
-    CombinedRecorder, RecordingConfig, RecordingStats, RecordingState,
-    VideoResolution, VideoQualityPreset, AudioQualityPreset,
-    VideoCodec, AudioCodec, FrameRate, OutputFormat,
+    AudioCodec, AudioQualityPreset, CombinedRecorder, FrameRate, OutputFormat, RecordingConfig,
+    RecordingState, RecordingStats, VideoCodec, VideoQualityPreset, VideoResolution,
 };
 
 /// Start recording command
@@ -25,7 +24,9 @@ pub async fn start_recording(
 
     // Get or create recorder instance
     let recorder = app.state::<std::sync::Mutex<CombinedRecorder>>();
-    let mut recorder = recorder.lock().map_err(|e| format!("Failed to lock recorder: {}", e))?;
+    let mut recorder = recorder
+        .lock()
+        .map_err(|e| format!("Failed to lock recorder: {}", e))?;
 
     // Convert config options to full config
     let recording_config = if let Some(options) = config {
@@ -50,7 +51,9 @@ pub async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
 
     // Get recorder instance
     let recorder = app.state::<std::sync::Mutex<CombinedRecorder>>();
-    let mut recorder = recorder.lock().map_err(|e| format!("Failed to lock recorder: {}", e))?;
+    let mut recorder = recorder
+        .lock()
+        .map_err(|e| format!("Failed to lock recorder: {}", e))?;
 
     // Stop recording
     recorder
@@ -63,15 +66,25 @@ pub async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
 
 /// Get recording status command
 #[tauri::command]
-pub async fn get_recording_status(app: tauri::AppHandle) -> Result<RecordingStatusResponse, String> {
+pub async fn get_recording_status(
+    app: tauri::AppHandle,
+) -> Result<RecordingStatusResponse, String> {
     // Get recorder instance
     let recorder = app.state::<std::sync::Mutex<CombinedRecorder>>();
-    let recorder = recorder.lock().map_err(|e| format!("Failed to lock recorder: {}", e))?;
+    let recorder = recorder
+        .lock()
+        .map_err(|e| format!("Failed to lock recorder: {}", e))?;
 
     // Get current state and stats
-    let state = recorder.get_state().map_err(|e| format!("Failed to get state: {}", e))?;
-    let stats = recorder.get_stats().map_err(|e| format!("Failed to get stats: {}", e))?;
-    let current_session = recorder.get_current_session().map_err(|e| format!("Failed to get session: {}", e))?;
+    let state = recorder
+        .get_state()
+        .map_err(|e| format!("Failed to get state: {}", e))?;
+    let stats = recorder
+        .get_stats()
+        .map_err(|e| format!("Failed to get stats: {}", e))?;
+    let current_session = recorder
+        .get_current_session()
+        .map_err(|e| format!("Failed to get session: {}", e))?;
 
     Ok(RecordingStatusResponse {
         state,
@@ -90,7 +103,9 @@ pub async fn update_recording_config(
 
     // Get recorder instance
     let recorder = app.state::<std::sync::Mutex<CombinedRecorder>>();
-    let mut recorder = recorder.lock().map_err(|e| format!("Failed to lock recorder: {}", e))?;
+    let mut recorder = recorder
+        .lock()
+        .map_err(|e| format!("Failed to lock recorder: {}", e))?;
 
     // Convert options to full config
     let recording_config = config.to_recording_config()?;
@@ -139,26 +154,22 @@ pub async fn get_recording_presets() -> Result<Vec<RecordingPreset>, String> {
 
 /// Test recording capabilities command
 #[tauri::command]
-pub async fn test_recording_capabilities(app: tauri::AppHandle) -> Result<RecordingCapabilities, String> {
+pub async fn test_recording_capabilities(
+    app: tauri::AppHandle,
+) -> Result<RecordingCapabilities, String> {
     // This would test system capabilities for recording
     // For now, return a basic capability assessment
 
     let capabilities = RecordingCapabilities {
         can_record_video: true,
         can_record_audio: true,
-        supported_resolutions: vec![
-            VideoResolution::HD720p,
-            VideoResolution::HD1080p,
-        ],
+        supported_resolutions: vec![VideoResolution::HD720p, VideoResolution::HD1080p],
         supported_video_codecs: vec![VideoCodec::H264],
         supported_audio_codecs: vec![AudioCodec::AAC],
         max_concurrent_recordings: 1,
         estimated_max_bitrate: 10_000_000, // 10 Mbps
         hardware_acceleration_available: false,
-        recommended_presets: vec![
-            "fast_720p".to_string(),
-            "balanced_1080p".to_string(),
-        ],
+        recommended_presets: vec!["fast_720p".to_string(), "balanced_1080p".to_string()],
     };
 
     Ok(capabilities)

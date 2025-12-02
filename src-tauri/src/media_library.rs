@@ -3,15 +3,15 @@
 //! SQLite database layer for persistent storage of media library information,
 //! including metadata, thumbnails, and search indexing.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{sqlite::SqlitePool, Row, Sqlite, Pool};
+use sqlx::{sqlite::SqlitePool, Pool, Row, Sqlite};
 use std::path::{Path, PathBuf};
-use tracing::{info, error, debug, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::commands_media::{MediaFileInfo, MediaType, MediaMetadata};
+use crate::commands_media::{MediaFileInfo, MediaMetadata, MediaType};
 
 /// Media library database manager
 pub struct MediaLibraryDatabase {
@@ -39,7 +39,7 @@ pub struct DbMediaFile {
     pub created_at: DateTime<Utc>,
     pub modified_at: DateTime<Utc>,
     pub last_accessed: DateTime<Utc>,
-    pub tags: Option<String>, // JSON array
+    pub tags: Option<String>,     // JSON array
     pub metadata: Option<String>, // JSON blob
 }
 
@@ -72,21 +72,27 @@ pub struct SearchFilter {
 impl MediaLibraryDatabase {
     /// Create new media library database instance
     pub async fn new(db_path: &Path, thumbnail_dir: &Path) -> Result<Self> {
-        info!("Initializing media library database at: {}", db_path.display());
+        info!(
+            "Initializing media library database at: {}",
+            db_path.display()
+        );
 
         // Create database directory if it doesn't exist
         if let Some(parent) = db_path.parent() {
-            tokio::fs::create_dir_all(parent).await
+            tokio::fs::create_dir_all(parent)
+                .await
                 .map_err(|e| anyhow!("Failed to create database directory: {}", e))?;
         }
 
         // Create thumbnail directory if it doesn't exist
-        tokio::fs::create_dir_all(thumbnail_dir).await
+        tokio::fs::create_dir_all(thumbnail_dir)
+            .await
             .map_err(|e| anyhow!("Failed to create thumbnail directory: {}", e))?;
 
         // Connect to database
         let connection_string = format!("sqlite:{}", db_path.display());
-        let pool = SqlitePool::connect(&connection_string).await
+        let pool = SqlitePool::connect(&connection_string)
+            .await
             .map_err(|e| anyhow!("Failed to connect to database: {}", e))?;
 
         let db = Self {
@@ -129,7 +135,7 @@ impl MediaLibraryDatabase {
                 tags TEXT,
                 metadata TEXT
             )
-            "#
+            "#,
         )
         .execute(&self.pool)
         .await
@@ -147,7 +153,7 @@ impl MediaLibraryDatabase {
                 errors TEXT,
                 scan_duration_ms INTEGER
             )
-            "#
+            "#,
         )
         .execute(&self.pool)
         .await
@@ -163,7 +169,9 @@ impl MediaLibraryDatabase {
         ];
 
         for index in indexes {
-            sqlx::query(index).execute(&self.pool).await
+            sqlx::query(index)
+                .execute(&self.pool)
+                .await
                 .map_err(|e| anyhow!("Failed to create index: {}", e))?;
         }
 
@@ -199,7 +207,7 @@ impl MediaLibraryDatabase {
                     metadata = ?,
                     thumbnail_path = ?
                 WHERE path = ?
-                "#
+                "#,
             )
             .bind(&media_info.name)
             .bind(format!("{:?}", media_info.file_type))
@@ -222,7 +230,7 @@ impl MediaLibraryDatabase {
                     id, path, filename, file_type, size, duration,
                     metadata, thumbnail_path
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                "#
+                "#,
             )
             .bind(&id)
             .bind(&media_info.path)
@@ -244,7 +252,8 @@ impl MediaLibraryDatabase {
     /// Search media files with filters
     pub async fn search_media_files(&self, filter: &SearchFilter) -> Result<Vec<DbMediaFile>> {
         let mut query = "SELECT * FROM media_files WHERE 1=1".to_string();
-        let mut bindings: Vec<Box<dyn sqlx::Encode<'_, Sqlite> + sqlx::Type<Sqlite> + Send>> = Vec::new();
+        let mut bindings: Vec<Box<dyn sqlx::Encode<'_, Sqlite> + sqlx::Type<Sqlite> + Send>> =
+            Vec::new();
 
         // Add filters
         if let Some(query_str) = &filter.query {
@@ -255,8 +264,12 @@ impl MediaLibraryDatabase {
         }
 
         if let Some(file_types) = &filter.file_types {
-            let type_placeholders: Vec<String> = file_types.iter().map(|_| "?".to_string()).collect();
-            query.push_str(&format!(" AND file_type IN ({})", type_placeholders.join(",")));
+            let type_placeholders: Vec<String> =
+                file_types.iter().map(|_| "?".to_string()).collect();
+            query.push_str(&format!(
+                " AND file_type IN ({})",
+                type_placeholders.join(",")
+            ));
             for ft in file_types {
                 bindings.push(Box::new(format!("{:?}", ft)));
             }
@@ -296,7 +309,9 @@ impl MediaLibraryDatabase {
         let mut q = sqlx::query_as::<_, DbMediaFile>(&query);
 
         // This is a simplified approach - in production, you'd want to handle bindings properly
-        let results = q.fetch_all(&self.pool).await
+        let results = q
+            .fetch_all(&self.pool)
+            .await
             .map_err(|e| anyhow!("Failed to search media files: {}", e))?;
 
         Ok(results)
@@ -304,13 +319,11 @@ impl MediaLibraryDatabase {
 
     /// Get media file by path
     pub async fn get_media_file_by_path(&self, path: &str) -> Result<Option<DbMediaFile>> {
-        let file = sqlx::query_as::<_, DbMediaFile>(
-            "SELECT * FROM media_files WHERE path = ?"
-        )
-        .bind(path)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| anyhow!("Failed to get media file by path: {}", e))?;
+        let file = sqlx::query_as::<_, DbMediaFile>("SELECT * FROM media_files WHERE path = ?")
+            .bind(path)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| anyhow!("Failed to get media file by path: {}", e))?;
 
         Ok(file)
     }
@@ -338,7 +351,7 @@ impl MediaLibraryDatabase {
             INSERT INTO scan_history (
                 scan_path, scan_time, files_found, total_size, errors, scan_duration_ms
             ) VALUES (?, ?, ?, ?, ?, ?)
-            "#
+            "#,
         )
         .bind(&scan.scan_path)
         .bind(scan.scan_time)
@@ -400,10 +413,11 @@ impl MediaLibraryDatabase {
     /// Clean up orphaned thumbnails
     pub async fn cleanup_orphaned_thumbnails(&self) -> Result<usize> {
         // Get all thumbnail paths from database
-        let db_thumbnails = sqlx::query("SELECT thumbnail_path FROM media_files WHERE thumbnail_path IS NOT NULL")
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| anyhow!("Failed to get thumbnail paths: {}", e))?;
+        let db_thumbnails =
+            sqlx::query("SELECT thumbnail_path FROM media_files WHERE thumbnail_path IS NOT NULL")
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| anyhow!("Failed to get thumbnail paths: {}", e))?;
 
         let mut removed_count = 0;
 
@@ -473,7 +487,9 @@ mod tests {
         let db_path = temp_dir.path().join("test.db");
         let thumb_dir = temp_dir.path().join("thumbnails");
 
-        let db = MediaLibraryDatabase::new(&db_path, &thumb_dir).await.unwrap();
+        let db = MediaLibraryDatabase::new(&db_path, &thumb_dir)
+            .await
+            .unwrap();
 
         let media_info = MediaFileInfo {
             path: "/test/video.mp4".to_string(),

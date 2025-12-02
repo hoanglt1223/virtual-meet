@@ -32,9 +32,11 @@ mod virtual_device_tests {
             Ok(_) => info!("Webcam initialized successfully"),
             Err(e) => {
                 println!("Expected initialization failure: {}", e);
-                assert!(e.to_string().contains("requires") ||
-                       e.to_string().contains("failed") ||
-                       e.to_string().contains("COM"));
+                assert!(
+                    e.to_string().contains("requires")
+                        || e.to_string().contains("failed")
+                        || e.to_string().contains("COM")
+                );
             }
         }
     }
@@ -102,9 +104,11 @@ mod virtual_device_tests {
             Ok(_) => info!("Microphone initialized successfully"),
             Err(e) => {
                 println!("Expected initialization failure: {}", e);
-                assert!(e.to_string().contains("requires") ||
-                       e.to_string().contains("failed") ||
-                       e.to_string().contains("COM"));
+                assert!(
+                    e.to_string().contains("requires")
+                        || e.to_string().contains("failed")
+                        || e.to_string().contains("COM")
+                );
             }
         }
     }
@@ -242,10 +246,12 @@ mod virtual_device_tests {
     async fn test_media_router_invalid_media_switch() {
         let router = MediaRouter::new();
 
-        let result = router.switch_media(
-            Some("nonexistent_video.mp4".to_string()),
-            Some("nonexistent_audio.mp3".to_string()),
-        ).await;
+        let result = router
+            .switch_media(
+                Some("nonexistent_video.mp4".to_string()),
+                Some("nonexistent_audio.mp3".to_string()),
+            )
+            .await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not found"));
@@ -321,13 +327,7 @@ mod virtual_device_tests {
         use crate::virtual_device::webcam::VideoFrameData;
 
         let data = vec![255u8; 1920 * 1080 * 3]; // RGB24 data
-        let frame = VideoFrameData::new(
-            data.clone(),
-            1920,
-            1080,
-            Duration::from_millis(33),
-            42,
-        );
+        let frame = VideoFrameData::new(data.clone(), 1920, 1080, Duration::from_millis(33), 42);
 
         assert_eq!(frame.size(), data.len());
         assert_eq!(frame.dimensions(), (1920, 1080));
@@ -408,9 +408,9 @@ mod virtual_device_tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use std::fs::File;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     // Helper function to create a temporary media file for testing
     fn create_temp_media_file(content: &[u8], extension: &str) -> String {
@@ -481,7 +481,7 @@ mod integration_tests {
                     let final_status = router.get_status().await;
                     assert!(!final_status.is_active);
                 }
-            },
+            }
             Err(_) => {
                 // Initialization failure is expected without virtual device drivers
             }

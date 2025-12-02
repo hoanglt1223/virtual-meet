@@ -3,14 +3,14 @@
 //! This module integrates the JSON DSL scripting engine with the existing
 //! video/audio systems and Rhai scripting engine.
 
-use anyhow::{Result, anyhow};
-use crate::json_dsl::{JsonDslEngine, JsonDslScript, ScriptExecutionResult, ExecutionContext};
+use crate::json_dsl::{ExecutionContext, JsonDslEngine, JsonDslScript, ScriptExecutionResult};
 use crate::scripting::ScriptEngine;
+use anyhow::{anyhow, Result};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
-use tracing::{info, error, warn, debug};
+use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
+use tracing::{debug, error, info, warn};
 
 /// Integrated DSL Engine that combines JSON DSL with existing systems
 #[derive(Debug)]
@@ -104,7 +104,9 @@ impl IntegratedDslEngine {
         let mut integrated_script = script.clone();
 
         // Replace actions with integrated versions
-        integrated_script.actions = script.actions.iter()
+        integrated_script.actions = script
+            .actions
+            .iter()
             .map(|action| self.create_integrated_action(action))
             .collect::<Result<Vec<_>>>()?;
 
@@ -112,64 +114,144 @@ impl IntegratedDslEngine {
     }
 
     /// Create an integrated version of a single action
-    fn create_integrated_action(&self, action: &crate::json_dsl::ScriptAction) -> Result<crate::json_dsl::ScriptAction> {
+    fn create_integrated_action(
+        &self,
+        action: &crate::json_dsl::ScriptAction,
+    ) -> Result<crate::json_dsl::ScriptAction> {
         match action {
-            crate::json_dsl::ScriptAction::PlayVideo { path, start_time, duration, loop_video, device, volume } => {
-                Ok(crate::json_dsl::ScriptAction::CallFunction {
-                    function: "integrated_play_video".to_string(),
-                    parameters: Some(HashMap::from([
-                        ("path".to_string(), crate::json_dsl::ScriptValue::String(path.clone())),
-                        ("start_time".to_string(), crate::json_dsl::ScriptValue::Number(start_time.unwrap_or(0.0))),
-                        ("duration".to_string(), crate::json_dsl::ScriptValue::Number(duration.unwrap_or(-1.0))),
-                        ("loop_video".to_string(), crate::json_dsl::ScriptValue::Boolean(loop_video.unwrap_or(false))),
-                        ("device".to_string(), crate::json_dsl::ScriptValue::String(device.clone().unwrap_or_default())),
-                        ("volume".to_string(), crate::json_dsl::ScriptValue::Number(volume.unwrap_or(1.0))),
-                    ])),
-                })
-            },
-            crate::json_dsl::ScriptAction::PlayAudio { path, start_time, duration, loop_audio, device, volume } => {
-                Ok(crate::json_dsl::ScriptAction::CallFunction {
-                    function: "integrated_play_audio".to_string(),
-                    parameters: Some(HashMap::from([
-                        ("path".to_string(), crate::json_dsl::ScriptValue::String(path.clone())),
-                        ("start_time".to_string(), crate::json_dsl::ScriptValue::Number(start_time.unwrap_or(0.0))),
-                        ("duration".to_string(), crate::json_dsl::ScriptValue::Number(duration.unwrap_or(-1.0))),
-                        ("loop_audio".to_string(), crate::json_dsl::ScriptValue::Boolean(loop_audio.unwrap_or(false))),
-                        ("device".to_string(), crate::json_dsl::ScriptValue::String(device.clone().unwrap_or_default())),
-                        ("volume".to_string(), crate::json_dsl::ScriptValue::Number(volume.unwrap_or(1.0))),
-                    ])),
-                })
-            },
-            crate::json_dsl::ScriptAction::StartRecording { output_path, quality, record_video, record_audio, max_duration } => {
-                Ok(crate::json_dsl::ScriptAction::CallFunction {
-                    function: "integrated_start_recording".to_string(),
-                    parameters: Some(HashMap::from([
-                        ("output_path".to_string(), crate::json_dsl::ScriptValue::String(output_path.clone())),
-                        ("quality".to_string(), crate::json_dsl::ScriptValue::String(quality.clone().unwrap_or_default())),
-                        ("record_video".to_string(), crate::json_dsl::ScriptValue::Boolean(record_video.unwrap_or(true))),
-                        ("record_audio".to_string(), crate::json_dsl::ScriptValue::Boolean(record_audio.unwrap_or(true))),
-                        ("max_duration".to_string(), crate::json_dsl::ScriptValue::Number(max_duration.unwrap_or(-1.0))),
-                    ])),
-                })
-            },
+            crate::json_dsl::ScriptAction::PlayVideo {
+                path,
+                start_time,
+                duration,
+                loop_video,
+                device,
+                volume,
+            } => Ok(crate::json_dsl::ScriptAction::CallFunction {
+                function: "integrated_play_video".to_string(),
+                parameters: Some(HashMap::from([
+                    (
+                        "path".to_string(),
+                        crate::json_dsl::ScriptValue::String(path.clone()),
+                    ),
+                    (
+                        "start_time".to_string(),
+                        crate::json_dsl::ScriptValue::Number(start_time.unwrap_or(0.0)),
+                    ),
+                    (
+                        "duration".to_string(),
+                        crate::json_dsl::ScriptValue::Number(duration.unwrap_or(-1.0)),
+                    ),
+                    (
+                        "loop_video".to_string(),
+                        crate::json_dsl::ScriptValue::Boolean(loop_video.unwrap_or(false)),
+                    ),
+                    (
+                        "device".to_string(),
+                        crate::json_dsl::ScriptValue::String(device.clone().unwrap_or_default()),
+                    ),
+                    (
+                        "volume".to_string(),
+                        crate::json_dsl::ScriptValue::Number(volume.unwrap_or(1.0)),
+                    ),
+                ])),
+            }),
+            crate::json_dsl::ScriptAction::PlayAudio {
+                path,
+                start_time,
+                duration,
+                loop_audio,
+                device,
+                volume,
+            } => Ok(crate::json_dsl::ScriptAction::CallFunction {
+                function: "integrated_play_audio".to_string(),
+                parameters: Some(HashMap::from([
+                    (
+                        "path".to_string(),
+                        crate::json_dsl::ScriptValue::String(path.clone()),
+                    ),
+                    (
+                        "start_time".to_string(),
+                        crate::json_dsl::ScriptValue::Number(start_time.unwrap_or(0.0)),
+                    ),
+                    (
+                        "duration".to_string(),
+                        crate::json_dsl::ScriptValue::Number(duration.unwrap_or(-1.0)),
+                    ),
+                    (
+                        "loop_audio".to_string(),
+                        crate::json_dsl::ScriptValue::Boolean(loop_audio.unwrap_or(false)),
+                    ),
+                    (
+                        "device".to_string(),
+                        crate::json_dsl::ScriptValue::String(device.clone().unwrap_or_default()),
+                    ),
+                    (
+                        "volume".to_string(),
+                        crate::json_dsl::ScriptValue::Number(volume.unwrap_or(1.0)),
+                    ),
+                ])),
+            }),
+            crate::json_dsl::ScriptAction::StartRecording {
+                output_path,
+                quality,
+                record_video,
+                record_audio,
+                max_duration,
+            } => Ok(crate::json_dsl::ScriptAction::CallFunction {
+                function: "integrated_start_recording".to_string(),
+                parameters: Some(HashMap::from([
+                    (
+                        "output_path".to_string(),
+                        crate::json_dsl::ScriptValue::String(output_path.clone()),
+                    ),
+                    (
+                        "quality".to_string(),
+                        crate::json_dsl::ScriptValue::String(quality.clone().unwrap_or_default()),
+                    ),
+                    (
+                        "record_video".to_string(),
+                        crate::json_dsl::ScriptValue::Boolean(record_video.unwrap_or(true)),
+                    ),
+                    (
+                        "record_audio".to_string(),
+                        crate::json_dsl::ScriptValue::Boolean(record_audio.unwrap_or(true)),
+                    ),
+                    (
+                        "max_duration".to_string(),
+                        crate::json_dsl::ScriptValue::Number(max_duration.unwrap_or(-1.0)),
+                    ),
+                ])),
+            }),
             crate::json_dsl::ScriptAction::StopRecording { save_path } => {
                 Ok(crate::json_dsl::ScriptAction::CallFunction {
                     function: "integrated_stop_recording".to_string(),
-                    parameters: Some(HashMap::from([
-                        ("save_path".to_string(), crate::json_dsl::ScriptValue::String(save_path.clone().unwrap_or_default())),
-                    ])),
+                    parameters: Some(HashMap::from([(
+                        "save_path".to_string(),
+                        crate::json_dsl::ScriptValue::String(save_path.clone().unwrap_or_default()),
+                    )])),
                 })
-            },
-            crate::json_dsl::ScriptAction::SetVirtualDevice { device_type, action, source } => {
-                Ok(crate::json_dsl::ScriptAction::CallFunction {
-                    function: "integrated_set_virtual_device".to_string(),
-                    parameters: Some(HashMap::from([
-                        ("device_type".to_string(), crate::json_dsl::ScriptValue::String(device_type.clone())),
-                        ("action".to_string(), crate::json_dsl::ScriptValue::String(action.clone())),
-                        ("source".to_string(), crate::json_dsl::ScriptValue::String(source.clone().unwrap_or_default())),
-                    ])),
-                })
-            },
+            }
+            crate::json_dsl::ScriptAction::SetVirtualDevice {
+                device_type,
+                action,
+                source,
+            } => Ok(crate::json_dsl::ScriptAction::CallFunction {
+                function: "integrated_set_virtual_device".to_string(),
+                parameters: Some(HashMap::from([
+                    (
+                        "device_type".to_string(),
+                        crate::json_dsl::ScriptValue::String(device_type.clone()),
+                    ),
+                    (
+                        "action".to_string(),
+                        crate::json_dsl::ScriptValue::String(action.clone()),
+                    ),
+                    (
+                        "source".to_string(),
+                        crate::json_dsl::ScriptValue::String(source.clone().unwrap_or_default()),
+                    ),
+                ])),
+            }),
             _ => Ok(action.clone()), // Return other actions unchanged
         }
     }
@@ -191,13 +273,19 @@ impl IntegratedDslEngine {
     }
 
     /// Integrated video playback
-    async fn integrated_play_video(&self, parameters: &HashMap<String, crate::json_dsl::ScriptValue>) -> Result<Option<String>> {
+    async fn integrated_play_video(
+        &self,
+        parameters: &HashMap<String, crate::json_dsl::ScriptValue>,
+    ) -> Result<Option<String>> {
         let path = extract_string_param(parameters, "path")?;
         let start_time = extract_number_param(parameters, "start_time").unwrap_or(0.0);
         let volume = extract_number_param(parameters, "volume").unwrap_or(1.0);
         let device = extract_string_param(parameters, "device").unwrap_or_default();
 
-        info!("Starting integrated video playback: {} (start: {}, volume: {})", path, start_time, volume);
+        info!(
+            "Starting integrated video playback: {} (start: {}, volume: {})",
+            path, start_time, volume
+        );
 
         // Validate file exists
         if !std::path::Path::new(&path).exists() {
@@ -212,7 +300,11 @@ impl IntegratedDslEngine {
             start_time,
             is_looping: extract_bool_param(parameters, "loop_video").unwrap_or(false),
             volume,
-            device_id: if device.is_empty() { None } else { Some(device) },
+            device_id: if device.is_empty() {
+                None
+            } else {
+                Some(device)
+            },
         };
 
         // Store stream information
@@ -227,10 +319,13 @@ impl IntegratedDslEngine {
             let mut vars = HashMap::new();
 
             // Call the existing Rhai function for webcam streaming
-            let rhai_script = format!(r#"
+            let rhai_script = format!(
+                r#"
                 print("Starting virtual webcam streaming for video: {}");
                 start_webcam_streaming("{}");
-            "#, path, path);
+            "#,
+                path, path
+            );
 
             let result = rhai.execute_content(&rhai_script, Some(vars));
             if !result.success {
@@ -242,13 +337,19 @@ impl IntegratedDslEngine {
     }
 
     /// Integrated audio playback
-    async fn integrated_play_audio(&self, parameters: &HashMap<String, crate::json_dsl::ScriptValue>) -> Result<Option<String>> {
+    async fn integrated_play_audio(
+        &self,
+        parameters: &HashMap<String, crate::json_dsl::ScriptValue>,
+    ) -> Result<Option<String>> {
         let path = extract_string_param(parameters, "path")?;
         let start_time = extract_number_param(parameters, "start_time").unwrap_or(0.0);
         let volume = extract_number_param(parameters, "volume").unwrap_or(1.0);
         let device = extract_string_param(parameters, "device").unwrap_or_default();
 
-        info!("Starting integrated audio playback: {} (start: {}, volume: {})", path, start_time, volume);
+        info!(
+            "Starting integrated audio playback: {} (start: {}, volume: {})",
+            path, start_time, volume
+        );
 
         // Validate file exists
         if !std::path::Path::new(&path).exists() {
@@ -263,7 +364,11 @@ impl IntegratedDslEngine {
             start_time,
             is_looping: extract_bool_param(parameters, "loop_audio").unwrap_or(false),
             volume,
-            device_id: if device.is_empty() { None } else { Some(device) },
+            device_id: if device.is_empty() {
+                None
+            } else {
+                Some(device)
+            },
         };
 
         // Store stream information
@@ -277,10 +382,13 @@ impl IntegratedDslEngine {
             let mut rhai = self.rhai_engine.lock().unwrap();
             let mut vars = HashMap::new();
 
-            let rhai_script = format!(r#"
+            let rhai_script = format!(
+                r#"
                 print("Starting virtual audio streaming for audio: {}");
                 start_microphone_streaming("{}");
-            "#, path, path);
+            "#,
+                path, path
+            );
 
             let result = rhai.execute_content(&rhai_script, Some(vars));
             if !result.success {
@@ -292,12 +400,18 @@ impl IntegratedDslEngine {
     }
 
     /// Integrated recording start
-    async fn integrated_start_recording(&self, parameters: &HashMap<String, crate::json_dsl::ScriptValue>) -> Result<Option<String>> {
+    async fn integrated_start_recording(
+        &self,
+        parameters: &HashMap<String, crate::json_dsl::ScriptValue>,
+    ) -> Result<Option<String>> {
         let output_path = extract_string_param(parameters, "output_path")?;
         let record_video = extract_bool_param(parameters, "record_video").unwrap_or(true);
         let record_audio = extract_bool_param(parameters, "record_audio").unwrap_or(true);
 
-        info!("Starting integrated recording: {} (video: {}, audio: {})", output_path, record_video, record_audio);
+        info!(
+            "Starting integrated recording: {} (video: {}, audio: {})",
+            output_path, record_video, record_audio
+        );
 
         // Create recording session entry
         let session_id = uuid::Uuid::new_v4().to_string();
@@ -312,7 +426,9 @@ impl IntegratedDslEngine {
         // Store session information
         {
             let mut media = self.media_integration.lock().unwrap();
-            media.recording_sessions.insert(session_id.clone(), recording_session);
+            media
+                .recording_sessions
+                .insert(session_id.clone(), recording_session);
         }
 
         // Integrate with existing Rhai engine for recording
@@ -320,10 +436,13 @@ impl IntegratedDslEngine {
             let mut rhai = self.rhai_engine.lock().unwrap();
             let mut vars = HashMap::new();
 
-            let rhai_script = format!(r#"
+            let rhai_script = format!(
+                r#"
                 print("Starting recording: {}");
                 start_recording("{}");
-            "#, output_path, output_path);
+            "#,
+                output_path, output_path
+            );
 
             let result = rhai.execute_content(&rhai_script, Some(vars));
             if !result.success {
@@ -335,7 +454,10 @@ impl IntegratedDslEngine {
     }
 
     /// Integrated recording stop
-    async fn integrated_stop_recording(&self, parameters: &HashMap<String, crate::json_dsl::ScriptValue>) -> Result<Option<String>> {
+    async fn integrated_stop_recording(
+        &self,
+        parameters: &HashMap<String, crate::json_dsl::ScriptValue>,
+    ) -> Result<Option<String>> {
         let save_path = extract_string_param(parameters, "save_path").unwrap_or_default();
 
         info!("Stopping integrated recording: save_path={}", save_path);
@@ -348,9 +470,11 @@ impl IntegratedDslEngine {
             }
 
             // Remove the first session (simplified for single recording support)
-            media.recording_sessions.drain().next().map(|(id, session)| {
-                (id, session)
-            })
+            media
+                .recording_sessions
+                .drain()
+                .next()
+                .map(|(id, session)| (id, session))
         };
 
         if let Some((session_id, _session)) = session_info {
@@ -365,7 +489,8 @@ impl IntegratedDslEngine {
             let rhai_script = r#"
                 print("Stopping recording");
                 stop_recording();
-            "#.to_string();
+            "#
+            .to_string();
 
             let result = rhai.execute_content(&rhai_script, Some(vars));
             if !result.success {
@@ -377,12 +502,18 @@ impl IntegratedDslEngine {
     }
 
     /// Integrated virtual device control
-    async fn integrated_set_virtual_device(&self, parameters: &HashMap<String, crate::json_dsl::ScriptValue>) -> Result<Option<String>> {
+    async fn integrated_set_virtual_device(
+        &self,
+        parameters: &HashMap<String, crate::json_dsl::ScriptValue>,
+    ) -> Result<Option<String>> {
         let device_type = extract_string_param(parameters, "device_type")?;
         let action = extract_string_param(parameters, "action")?;
         let source = extract_string_param(parameters, "source").unwrap_or_default();
 
-        info!("Setting virtual device: {} {} (source: {})", device_type, action, source);
+        info!(
+            "Setting virtual device: {} {} (source: {})",
+            device_type, action, source
+        );
 
         // Integrate with existing Rhai engine for device control
         {
@@ -391,31 +522,39 @@ impl IntegratedDslEngine {
 
             let rhai_script = match (device_type.as_str(), action.as_str()) {
                 ("webcam", "start") => {
-                    format!(r#"
+                    format!(
+                        r#"
                         print("Starting virtual webcam");
                         start_webcam_streaming("{}");
-                    "#, source)
-                },
-                ("webcam", "stop") => {
-                    r#"
+                    "#,
+                        source
+                    )
+                }
+                ("webcam", "stop") => r#"
                         print("Stopping virtual webcam");
                         stop_webcam_streaming();
-                    "#.to_string()
-                },
+                    "#
+                .to_string(),
                 ("microphone", "start") => {
-                    format!(r#"
+                    format!(
+                        r#"
                         print("Starting virtual microphone");
                         start_microphone_streaming("{}");
-                    "#, source)
-                },
-                ("microphone", "stop") => {
-                    r#"
+                    "#,
+                        source
+                    )
+                }
+                ("microphone", "stop") => r#"
                         print("Stopping virtual microphone");
                         stop_microphone_streaming();
-                    "#.to_string()
-                },
+                    "#
+                .to_string(),
                 _ => {
-                    return Err(anyhow!("Unsupported device type or action: {} {}", device_type, action));
+                    return Err(anyhow!(
+                        "Unsupported device type or action: {} {}",
+                        device_type,
+                        action
+                    ));
                 }
             };
 
@@ -425,7 +564,10 @@ impl IntegratedDslEngine {
             }
         }
 
-        Ok(Some(format!("Virtual device {} {} completed", device_type, action)))
+        Ok(Some(format!(
+            "Virtual device {} {} completed",
+            device_type, action
+        )))
     }
 
     /// Clean up active resources
@@ -479,29 +621,41 @@ impl IntegratedDslEngine {
             active_video_streams: media.video_streams.len(),
             active_audio_streams: media.audio_streams.len(),
             active_recording_sessions: media.recording_sessions.len(),
-            video_streams: media.video_streams.values().map(|s| MediaStreamStatus {
-                stream_id: s.stream_id.clone(),
-                file_path: s.file_path.to_string_lossy().to_string(),
-                start_time: s.start_time,
-                is_looping: s.is_looping,
-                volume: s.volume,
-                device_id: s.device_id.clone(),
-            }).collect(),
-            audio_streams: media.audio_streams.values().map(|s| MediaStreamStatus {
-                stream_id: s.stream_id.clone(),
-                file_path: s.file_path.to_string_lossy().to_string(),
-                start_time: s.start_time,
-                is_looping: s.is_looping,
-                volume: s.volume,
-                device_id: s.device_id.clone(),
-            }).collect(),
-            recording_sessions: media.recording_sessions.values().map(|s| RecordingSessionStatus {
-                session_id: s.session_id.clone(),
-                output_path: s.output_path.to_string_lossy().to_string(),
-                record_video: s.record_video,
-                record_audio: s.record_audio,
-                start_time: s.start_time,
-            }).collect(),
+            video_streams: media
+                .video_streams
+                .values()
+                .map(|s| MediaStreamStatus {
+                    stream_id: s.stream_id.clone(),
+                    file_path: s.file_path.to_string_lossy().to_string(),
+                    start_time: s.start_time,
+                    is_looping: s.is_looping,
+                    volume: s.volume,
+                    device_id: s.device_id.clone(),
+                })
+                .collect(),
+            audio_streams: media
+                .audio_streams
+                .values()
+                .map(|s| MediaStreamStatus {
+                    stream_id: s.stream_id.clone(),
+                    file_path: s.file_path.to_string_lossy().to_string(),
+                    start_time: s.start_time,
+                    is_looping: s.is_looping,
+                    volume: s.volume,
+                    device_id: s.device_id.clone(),
+                })
+                .collect(),
+            recording_sessions: media
+                .recording_sessions
+                .values()
+                .map(|s| RecordingSessionStatus {
+                    session_id: s.session_id.clone(),
+                    output_path: s.output_path.to_string_lossy().to_string(),
+                    record_video: s.record_video,
+                    record_audio: s.record_audio,
+                    start_time: s.start_time,
+                })
+                .collect(),
         })
     }
 }
@@ -550,7 +704,10 @@ impl MediaIntegration {
 }
 
 /// Helper function to extract string parameter
-fn extract_string_param(params: &HashMap<String, crate::json_dsl::ScriptValue>, key: &str) -> Result<String> {
+fn extract_string_param(
+    params: &HashMap<String, crate::json_dsl::ScriptValue>,
+    key: &str,
+) -> Result<String> {
     match params.get(key) {
         Some(crate::json_dsl::ScriptValue::String(s)) => Ok(s.clone()),
         Some(_) => Err(anyhow!("Parameter '{}' is not a string", key)),
@@ -559,7 +716,10 @@ fn extract_string_param(params: &HashMap<String, crate::json_dsl::ScriptValue>, 
 }
 
 /// Helper function to extract number parameter
-fn extract_number_param(params: &HashMap<String, crate::json_dsl::ScriptValue>, key: &str) -> Option<f64> {
+fn extract_number_param(
+    params: &HashMap<String, crate::json_dsl::ScriptValue>,
+    key: &str,
+) -> Option<f64> {
     match params.get(key) {
         Some(crate::json_dsl::ScriptValue::Number(n)) => Some(*n),
         Some(crate::json_dsl::ScriptValue::Integer(n)) => Some(*n as f64),
@@ -568,7 +728,10 @@ fn extract_number_param(params: &HashMap<String, crate::json_dsl::ScriptValue>, 
 }
 
 /// Helper function to extract boolean parameter
-fn extract_bool_param(params: &HashMap<String, crate::json_dsl::ScriptValue>, key: &str) -> Option<bool> {
+fn extract_bool_param(
+    params: &HashMap<String, crate::json_dsl::ScriptValue>,
+    key: &str,
+) -> Option<bool> {
     match params.get(key) {
         Some(crate::json_dsl::ScriptValue::Boolean(b)) => Some(*b),
         _ => None,
@@ -584,7 +747,7 @@ impl Default for IntegratedDslEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::json_dsl::{ScriptAction, ScriptValue, ScriptCondition, JsonDslScript};
+    use crate::json_dsl::{JsonDslScript, ScriptAction, ScriptCondition, ScriptValue};
 
     #[tokio::test]
     async fn test_integrated_script_parsing() {
@@ -620,7 +783,10 @@ mod tests {
 
         // Note: This test would require a test video file to actually work
         let parameters = HashMap::from([
-            ("path".to_string(), ScriptValue::String("test.mp4".to_string())),
+            (
+                "path".to_string(),
+                ScriptValue::String("test.mp4".to_string()),
+            ),
             ("volume".to_string(), ScriptValue::Number(0.8)),
             ("start_time".to_string(), ScriptValue::Number(0.0)),
         ]);

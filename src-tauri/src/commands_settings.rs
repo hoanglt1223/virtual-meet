@@ -6,11 +6,11 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::{command, State, AppHandle};
-use tracing::{info, error, warn, debug};
+use tauri::{command, AppHandle, State};
+use tracing::{debug, error, info, warn};
 
+use crate::devices::{DeviceCategory, DeviceOrigin, DeviceType};
 use crate::AppState;
-use crate::devices::{DeviceType, DeviceCategory, DeviceOrigin};
 
 /// Application settings structure
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -360,7 +360,10 @@ pub async fn update_settings(
 
     if validation_result.is_valid {
         // In a real implementation, you would save the settings to a configuration file
-        info!("Settings updated successfully for category: {:?}", request.category);
+        info!(
+            "Settings updated successfully for category: {:?}",
+            request.category
+        );
     } else {
         warn!("Settings validation failed: {:?}", validation_result.errors);
     }
@@ -370,10 +373,11 @@ pub async fn update_settings(
 
 /// Reset settings to defaults
 #[command]
-pub async fn reset_settings(
-    request: ResetSettingsRequest,
-) -> Result<SettingsResponse, String> {
-    info!("Resetting settings for categories: {:?}", request.categories);
+pub async fn reset_settings(request: ResetSettingsRequest) -> Result<SettingsResponse, String> {
+    info!(
+        "Resetting settings for categories: {:?}",
+        request.categories
+    );
 
     if !request.confirm {
         return Ok(SettingsResponse {
@@ -400,9 +404,7 @@ pub async fn reset_settings(
 
 /// Export settings to file
 #[command]
-pub async fn export_settings(
-    request: SettingsExportRequest,
-) -> Result<SettingsResponse, String> {
+pub async fn export_settings(request: SettingsExportRequest) -> Result<SettingsResponse, String> {
     info!("Exporting settings to: {}", request.file_path);
 
     // In a real implementation, you would export settings to the specified file
@@ -479,16 +481,14 @@ pub async fn get_available_video_devices() -> Result<Vec<VideoDeviceInfo>, Strin
     info!("Getting available video devices");
 
     // In a real implementation, you would query the system for video devices
-    let devices = vec![
-        VideoDeviceInfo {
-            id: "webcam_0".to_string(),
-            name: "Integrated Webcam".to_string(),
-            resolution: (1280, 720),
-            fps: 30.0,
-            is_virtual: false,
-            capabilities: vec!["1080p".to_string(), "720p".to_string()],
-        },
-    ];
+    let devices = vec![VideoDeviceInfo {
+        id: "webcam_0".to_string(),
+        name: "Integrated Webcam".to_string(),
+        resolution: (1280, 720),
+        fps: 30.0,
+        is_virtual: false,
+        capabilities: vec!["1080p".to_string(), "720p".to_string()],
+    }];
 
     Ok(devices)
 }
@@ -499,16 +499,14 @@ pub async fn get_available_audio_devices() -> Result<Vec<AudioDeviceInfo>, Strin
     info!("Getting available audio devices");
 
     // In a real implementation, you would query the system for audio devices
-    let devices = vec![
-        AudioDeviceInfo {
-            id: "mic_0".to_string(),
-            name: "Microphone".to_string(),
-            sample_rate: 44100,
-            channels: 2,
-            bit_depth: 16,
-            is_virtual: false,
-        },
-    ];
+    let devices = vec![AudioDeviceInfo {
+        id: "mic_0".to_string(),
+        name: "Microphone".to_string(),
+        sample_rate: 44100,
+        channels: 2,
+        bit_depth: 16,
+        is_virtual: false,
+    }];
 
     Ok(devices)
 }
@@ -561,13 +559,17 @@ fn validate_settings_category(
     let category_json = match category {
         SettingsCategory::Video => serde_json::to_value(&settings.video).unwrap_or_default(),
         SettingsCategory::Audio => serde_json::to_value(&settings.audio).unwrap_or_default(),
-        SettingsCategory::Recording => serde_json::to_value(&settings.recording).unwrap_or_default(),
-        _ => return SettingsValidationResult {
-            is_valid: true,
-            errors: vec![],
-            warnings: vec![],
-            info_messages: vec!["Validation not implemented for this category".to_string()],
-        },
+        SettingsCategory::Recording => {
+            serde_json::to_value(&settings.recording).unwrap_or_default()
+        }
+        _ => {
+            return SettingsValidationResult {
+                is_valid: true,
+                errors: vec![],
+                warnings: vec![],
+                info_messages: vec!["Validation not implemented for this category".to_string()],
+            }
+        }
     };
 
     validate_settings(category, &category_json)
@@ -642,7 +644,10 @@ fn validate_recording_settings(settings: &serde_json::Value) -> SettingsValidati
     }
 
     // Validate segment duration
-    if let Some(duration) = settings.get("segment_duration_minutes").and_then(|v| v.as_u64()) {
+    if let Some(duration) = settings
+        .get("segment_duration_minutes")
+        .and_then(|v| v.as_u64())
+    {
         if duration == 0 || duration > 1440 {
             errors.push("Segment duration should be between 1 and 1440 minutes".to_string());
         }

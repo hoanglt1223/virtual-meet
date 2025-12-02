@@ -3,20 +3,20 @@
 //! Background scanning service for discovering and processing media files.
 //! Handles recursive directory scanning, metadata extraction, and thumbnail generation.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use chrono::Utc;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{mpsc, RwLock, Semaphore};
-use tracing::{info, error, debug, warn};
-use walkdir::WalkDir;
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+use walkdir::WalkDir;
 
-use crate::commands_media::{MediaFileInfo, MediaType, MediaLibraryScanRequest};
+use crate::commands_media::{MediaFileInfo, MediaLibraryScanRequest, MediaType};
 use crate::media_library::{MediaLibraryDatabase, ScanHistory};
-use crate::metadata_extractor::{MetadataExtractor, MediaAnalysis};
-use crate::thumbnail_generator::{ThumbnailGenerator, ThumbnailConfig};
+use crate::metadata_extractor::{MediaAnalysis, MetadataExtractor};
+use crate::thumbnail_generator::{ThumbnailConfig, ThumbnailGenerator};
 
 /// Scanner configuration
 #[derive(Debug, Clone)]
@@ -102,7 +102,10 @@ impl MediaScanner {
 
     /// Start scanning media library
     pub async fn scan_library(&self, request: MediaLibraryScanRequest) -> Result<ScanResult> {
-        info!("Starting media library scan for {:?} paths", request.paths.len());
+        info!(
+            "Starting media library scan for {:?} paths",
+            request.paths.len()
+        );
 
         // Check if already scanning
         {
@@ -162,8 +165,11 @@ impl MediaScanner {
                     error!("Failed to record scan history: {}", e);
                 }
 
-                info!("Scan completed successfully: {} files found, {} errors",
-                      result.total_files, result.errors.len());
+                info!(
+                    "Scan completed successfully: {} files found, {} errors",
+                    result.total_files,
+                    result.errors.len()
+                );
             }
             Err(e) => {
                 result.errors.push(format!("Scan failed: {}", e));
@@ -263,7 +269,11 @@ impl MediaScanner {
         // Check file size
         if let Ok(metadata) = std::fs::metadata(file_path) {
             if metadata.len() > self.config.max_file_size {
-                debug!("Skipping large file: {} ({} bytes)", file_path.display(), metadata.len());
+                debug!(
+                    "Skipping large file: {} ({} bytes)",
+                    file_path.display(),
+                    metadata.len()
+                );
                 return false;
             }
         } else {
@@ -273,18 +283,22 @@ impl MediaScanner {
 
         // Check include patterns
         if let Some(file_name) = file_path.file_name().and_then(|n| n.to_str()) {
-            let included = self.config.include_patterns.iter().any(|pattern| {
-                self.matches_pattern(file_name, pattern)
-            });
+            let included = self
+                .config
+                .include_patterns
+                .iter()
+                .any(|pattern| self.matches_pattern(file_name, pattern));
 
             if !included {
                 return false;
             }
 
             // Check exclude patterns
-            let excluded = self.config.exclude_patterns.iter().any(|pattern| {
-                self.matches_pattern(file_name, pattern)
-            });
+            let excluded = self
+                .config
+                .exclude_patterns
+                .iter()
+                .any(|pattern| self.matches_pattern(file_name, pattern));
 
             if excluded {
                 debug!("Excluding file: {}", file_path.display());
@@ -316,8 +330,11 @@ impl MediaScanner {
 
     /// Process files in parallel
     async fn process_files_parallel(&self, file_paths: &[PathBuf]) -> Result<Vec<MediaFileInfo>> {
-        info!("Processing {} files with {} workers",
-              file_paths.len(), self.config.max_concurrent_files);
+        info!(
+            "Processing {} files with {} workers",
+            file_paths.len(),
+            self.config.max_concurrent_files
+        );
 
         let semaphore = Arc::new(Semaphore::new(self.config.max_concurrent_files));
         let mut tasks = Vec::new();
@@ -339,7 +356,8 @@ impl MediaScanner {
                     &metadata_extractor,
                     &thumbnail_config,
                     enable_thumbnails,
-                ).await
+                )
+                .await
             });
 
             tasks.push(task);
@@ -350,7 +368,7 @@ impl MediaScanner {
         for task in tasks {
             match task.await {
                 Ok(Ok(Some(media_info))) => results.push(media_info),
-                Ok(Ok(None)) => {}, // File was skipped
+                Ok(Ok(None)) => {} // File was skipped
                 Ok(Err(e)) => warn!("Failed to process file: {}", e),
                 Err(e) => error!("Task failed: {}", e),
             }
@@ -372,12 +390,22 @@ impl MediaScanner {
         debug!("Processing file: {}", file_path.display());
 
         // Check if file already exists in database
-        if let Ok(Some(db_file)) = database.get_media_file_by_path(&file_path.to_string_lossy()).await {
+        if let Ok(Some(db_file)) = database
+            .get_media_file_by_path(&file_path.to_string_lossy())
+            .await
+        {
             // Check if file was modified since last scan
             if let Ok(metadata) = tokio::fs::metadata(file_path).await {
                 if let Ok(modified) = metadata.modified() {
-                    if let Some(db_modified) = db_file.modified_at.duration_since(std::time::UNIX_EPOCH).ok() {
-                        let modified_time = chrono::DateTime::from_timestamp(modified.as_secs() as i64, modified.subsec_nanos());
+                    if let Some(db_modified) = db_file
+                        .modified_at
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .ok()
+                    {
+                        let modified_time = chrono::DateTime::from_timestamp(
+                            modified.as_secs() as i64,
+                            modified.subsec_nanos(),
+                        );
                         if let Some(modified_time) = modified_time {
                             if modified_time <= db_file.modified_at {
                                 debug!("File unchanged, skipping: {}", file_path.display());
@@ -398,7 +426,11 @@ impl MediaScanner {
         let media_analysis = match media_analysis {
             Ok(analysis) => analysis,
             Err(e) => {
-                warn!("Failed to extract metadata from {}: {}", file_path.display(), e);
+                warn!(
+                    "Failed to extract metadata from {}: {}",
+                    file_path.display(),
+                    e
+                );
                 return Ok(None);
             }
         };
@@ -418,15 +450,19 @@ impl MediaScanner {
         }
 
         // Generate thumbnail if enabled and applicable
-        let thumbnail_path = if enable_thumbnails && (media_type == MediaType::Video || media_type == MediaType::Audio) {
-            self.generate_thumbnail_for_file(file_path, &media_type, thumbnail_config, database).await?
+        let thumbnail_path = if enable_thumbnails
+            && (media_type == MediaType::Video || media_type == MediaType::Audio)
+        {
+            self.generate_thumbnail_for_file(file_path, &media_type, thumbnail_config, database)
+                .await?
         } else {
             None
         };
 
         // Create media file info
         let file_metadata = tokio::fs::metadata(file_path).await?;
-        let file_name = file_path.file_name()
+        let file_name = file_path
+            .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
@@ -437,14 +473,19 @@ impl MediaScanner {
             file_type: media_type,
             size: file_metadata.len(),
             duration: Some(media_analysis.duration),
-            metadata: metadata_extractor.read().await.to_media_metadata(&media_analysis),
+            metadata: metadata_extractor
+                .read()
+                .await
+                .to_media_metadata(&media_analysis),
             thumbnail_path,
-            last_modified: file_metadata.modified()
+            last_modified: file_metadata
+                .modified()
                 .ok()
                 .and_then(|t| t.elapsed().ok())
                 .map(|d| format!("{} seconds ago", d.as_secs()))
                 .unwrap_or_else(|| "Unknown".to_string()),
-            created: file_metadata.created()
+            created: file_metadata
+                .created()
                 .ok()
                 .and_then(|t| t.elapsed().ok())
                 .map(|d| format!("{} seconds ago", d.as_secs()))
@@ -480,10 +521,14 @@ impl MediaScanner {
         // Generate thumbnail
         let thumbnail_result = match media_type {
             MediaType::Video => {
-                generator.generate_video_thumbnail(file_path, thumbnail_dir).await
+                generator
+                    .generate_video_thumbnail(file_path, thumbnail_dir)
+                    .await
             }
             MediaType::Audio => {
-                generator.generate_audio_thumbnail(file_path, thumbnail_dir).await
+                generator
+                    .generate_audio_thumbnail(file_path, thumbnail_dir)
+                    .await
             }
             _ => return Ok(None),
         };
@@ -494,7 +539,11 @@ impl MediaScanner {
                 Ok(Some(result.path.to_string_lossy().to_string()))
             }
             Err(e) => {
-                warn!("Failed to generate thumbnail for {}: {}", file_path.display(), e);
+                warn!(
+                    "Failed to generate thumbnail for {}: {}",
+                    file_path.display(),
+                    e
+                );
                 Ok(None)
             }
         }
@@ -544,17 +593,21 @@ use regex;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_pattern_matching() {
         let config = ScannerConfig::default();
         let scanner = MediaScanner::new(
-            Arc::new(MediaLibraryDatabase::new(
-                &TempDir::new().unwrap().path().join("test.db"),
-                &TempDir::new().unwrap().path(),
-            ).await.unwrap()),
+            Arc::new(
+                MediaLibraryDatabase::new(
+                    &TempDir::new().unwrap().path().join("test.db"),
+                    &TempDir::new().unwrap().path(),
+                )
+                .await
+                .unwrap(),
+            ),
             config,
         );
 
@@ -568,10 +621,14 @@ mod tests {
     fn test_should_process_file() {
         let config = ScannerConfig::default();
         let scanner = MediaScanner::new(
-            Arc::new(MediaLibraryDatabase::new(
-                &TempDir::new().unwrap().path().join("test.db"),
-                &TempDir::new().unwrap().path(),
-            ).await.unwrap()),
+            Arc::new(
+                MediaLibraryDatabase::new(
+                    &TempDir::new().unwrap().path().join("test.db"),
+                    &TempDir::new().unwrap().path(),
+                )
+                .await
+                .unwrap(),
+            ),
             config,
         );
 

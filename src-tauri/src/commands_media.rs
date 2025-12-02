@@ -6,15 +6,15 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tauri::{command, State};
-use tracing::{info, error, warn, debug};
+use tracing::{debug, error, info, warn};
 
-use crate::AppState;
 use crate::audio::AudioMetadata;
+use crate::media_library::{LibraryStats, MediaLibraryDatabase, SearchFilter};
+use crate::media_scanner::{MediaScanner, ScanResult, ScannerConfig};
 use crate::virtual_device::VideoInfo;
-use crate::media_library::{MediaLibraryDatabase, LibraryStats, SearchFilter};
-use crate::media_scanner::{MediaScanner, ScannerConfig, ScanResult};
-use std::sync::Arc;
+use crate::AppState;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Media file information
 #[derive(Debug, Serialize, Clone)]
@@ -189,10 +189,14 @@ pub async fn initialize_media_library() -> Result<String, String> {
     let db_path = db_dir.join("media_library.db");
 
     // Initialize database
-    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir).await
+    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir)
+        .await
         .map_err(|e| format!("Failed to initialize database: {}", e))?;
 
-    info!("Media library initialized successfully at: {}", db_path.display());
+    info!(
+        "Media library initialized successfully at: {}",
+        db_path.display()
+    );
     Ok(db_path.to_string_lossy().to_string())
 }
 
@@ -227,7 +231,8 @@ pub async fn load_media_library(
     let db_path = app_data_dir.join("database").join("media_library.db");
     let thumb_dir = app_data_dir.join("thumbnails");
 
-    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir).await
+    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir)
+        .await
         .map_err(|e| format!("Failed to initialize database: {}", e))?;
     let database = Arc::new(database);
 
@@ -245,14 +250,19 @@ pub async fn load_media_library(
     };
 
     // Perform scan
-    let scan_result = scanner.scan_library(scan_request).await
+    let scan_result = scanner
+        .scan_library(scan_request)
+        .await
         .map_err(|e| format!("Scan failed: {}", e))?;
 
     // Convert to response
     Ok(MediaLibraryScanResponse {
         success: !scan_result.files_found.is_empty() || scan_result.errors.is_empty(),
-        message: format!("Scan completed: {} files found, {} errors",
-                        scan_result.total_files, scan_result.errors.len()),
+        message: format!(
+            "Scan completed: {} files found, {} errors",
+            scan_result.total_files,
+            scan_result.errors.len()
+        ),
         scanned_paths: scan_result.scanned_paths,
         found_files: scan_result.files_found,
         errors: scan_result.errors,
@@ -291,7 +301,7 @@ pub async fn set_current_video(
                 // In a real implementation, you would load this into the pipeline
             }
             Ok(result)
-        },
+        }
         Err(e) => Ok(MediaValidationResult {
             is_valid: false,
             file_type: MediaType::Video,
@@ -300,7 +310,7 @@ pub async fn set_current_video(
             metadata: None,
             error_message: Some(format!("Failed to validate video: {}", e)),
             warnings: vec![],
-        })
+        }),
     }
 }
 
@@ -333,7 +343,7 @@ pub async fn set_current_audio(
                 // In a real implementation, you would load this into the pipeline
             }
             Ok(result)
-        },
+        }
         Err(e) => Ok(MediaValidationResult {
             is_valid: false,
             file_type: MediaType::Audio,
@@ -342,7 +352,7 @@ pub async fn set_current_audio(
             metadata: None,
             error_message: Some(format!("Failed to validate audio: {}", e)),
             warnings: vec![],
-        })
+        }),
     }
 }
 
@@ -451,19 +461,23 @@ pub async fn get_media_library_status() -> Result<MediaLibraryStatusResponse, St
     let db_path = app_data_dir.join("database").join("media_library.db");
     let thumb_dir = app_data_dir.join("thumbnails");
 
-    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir).await
+    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir)
+        .await
         .map_err(|e| format!("Failed to connect to database: {}", e))?;
 
     // Get library statistics
-    let stats = database.get_library_stats().await
+    let stats = database
+        .get_library_stats()
+        .await
         .map_err(|e| format!("Failed to get library stats: {}", e))?;
 
     // Get scan history
-    let scan_history = database.get_scan_history(Some(1)).await
+    let scan_history = database
+        .get_scan_history(Some(1))
+        .await
         .map_err(|e| format!("Failed to get scan history: {}", e))?;
 
-    let last_scan_time = scan_history.first()
-        .map(|h| h.scan_time.to_rfc3339());
+    let last_scan_time = scan_history.first().map(|h| h.scan_time.to_rfc3339());
 
     Ok(MediaLibraryStatusResponse {
         success: true,
@@ -473,7 +487,10 @@ pub async fn get_media_library_status() -> Result<MediaLibraryStatusResponse, St
             video_files: stats.video_files,
             audio_files: stats.audio_files,
             image_files: stats.image_files,
-            other_files: stats.total_files - stats.video_files - stats.audio_files - stats.image_files,
+            other_files: stats.total_files
+                - stats.video_files
+                - stats.audio_files
+                - stats.image_files,
         },
         last_scan_time,
         library_paths: vec![], // TODO: Store library paths in database
@@ -505,14 +522,19 @@ pub async fn search_media_library_enhanced(
     let db_path = app_data_dir.join("database").join("media_library.db");
     let thumb_dir = app_data_dir.join("thumbnails");
 
-    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir).await
+    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir)
+        .await
         .map_err(|e| format!("Failed to connect to database: {}", e))?;
 
     let start_time = std::time::Instant::now();
 
     // Convert search request to filter
     let filter = SearchFilter {
-        query: if request.query.is_empty() { None } else { Some(request.query) },
+        query: if request.query.is_empty() {
+            None
+        } else {
+            Some(request.query)
+        },
         file_types: request.file_types,
         min_duration: None,
         max_duration: None,
@@ -524,7 +546,9 @@ pub async fn search_media_library_enhanced(
     };
 
     // Perform search
-    let db_results = database.search_media_files(&filter).await
+    let db_results = database
+        .search_media_files(&filter)
+        .await
         .map_err(|e| format!("Search failed: {}", e))?;
 
     // Convert to MediaFileInfo
@@ -595,14 +619,20 @@ pub async fn cleanup_media_library() -> Result<String, String> {
     let db_path = app_data_dir.join("database").join("media_library.db");
     let thumb_dir = app_data_dir.join("thumbnails");
 
-    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir).await
+    let database = MediaLibraryDatabase::new(&db_path, &thumb_dir)
+        .await
         .map_err(|e| format!("Failed to connect to database: {}", e))?;
 
     // Clean up orphaned thumbnails
-    let removed_thumbnails = database.cleanup_orphaned_thumbnails().await
+    let removed_thumbnails = database
+        .cleanup_orphaned_thumbnails()
+        .await
         .map_err(|e| format!("Failed to cleanup thumbnails: {}", e))?;
 
-    Ok(format!("Cleanup completed. Removed {} orphaned thumbnails.", removed_thumbnails))
+    Ok(format!(
+        "Cleanup completed. Removed {} orphaned thumbnails.",
+        removed_thumbnails
+    ))
 }
 
 /// Validate media file
@@ -639,20 +669,24 @@ fn scan_directory_for_media(
 
     for entry in entries {
         let entry = entry.map_err(|e| {
-            anyhow::anyhow!("Failed to read directory entry in {}: {}", dir_path.display(), e)
+            anyhow::anyhow!(
+                "Failed to read directory entry in {}: {}",
+                dir_path.display(),
+                e
+            )
         })?;
 
         let path = entry.path();
 
         if path.is_dir() && recursive {
-            if let Err(e) = scan_directory_for_media(
-                &path,
-                recursive,
-                found_files,
-                errors,
-                scanned_paths,
-            ) {
-                errors.push(format!("Failed to scan directory {}: {}", path.display(), e));
+            if let Err(e) =
+                scan_directory_for_media(&path, recursive, found_files, errors, scanned_paths)
+            {
+                errors.push(format!(
+                    "Failed to scan directory {}: {}",
+                    path.display(),
+                    e
+                ));
             }
         } else if path.is_file() {
             if let Some(media_info) = create_media_file_info(&path) {
@@ -683,13 +717,15 @@ fn create_media_file_info(path: &Path) -> Option<MediaFileInfo> {
     }
 
     let size = metadata.len();
-    let last_modified = metadata.modified()
+    let last_modified = metadata
+        .modified()
         .ok()
         .and_then(|t| t.elapsed().ok())
         .map(|d| format!("{} seconds ago", d.as_secs()))
         .unwrap_or_else(|| "Unknown".to_string());
 
-    let created = metadata.created()
+    let created = metadata
+        .created()
         .ok()
         .and_then(|t| t.elapsed().ok())
         .map(|d| format!("{} seconds ago", d.as_secs()))

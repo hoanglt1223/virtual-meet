@@ -3,10 +3,10 @@
 //! This module handles script execution, management, and automation using the Rhai scripting engine.
 
 use anyhow::Result;
-use rhai::{Engine, Scope, Dynamic, FuncArgs};
+use rhai::{Dynamic, Engine, FuncArgs, Scope};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tracing::{info, error, warn, debug};
+use tracing::{debug, error, info, warn};
 
 /// Script execution engine
 pub struct ScriptEngine {
@@ -79,9 +79,7 @@ impl ScriptEngine {
             std::thread::sleep(std::time::Duration::from_secs(seconds as u64));
         });
 
-        engine.register_fn("timestamp", || {
-            chrono::Utc::now().timestamp()
-        });
+        engine.register_fn("timestamp", || chrono::Utc::now().timestamp());
 
         engine.register_fn("format_duration", |seconds: i64| {
             let hours = seconds / 3600;
@@ -129,7 +127,11 @@ impl ScriptEngine {
     }
 
     /// Execute a script by ID
-    pub fn execute_script(&mut self, script_id: &str, variables: Option<HashMap<String, Dynamic>>) -> ExecutionResult {
+    pub fn execute_script(
+        &mut self,
+        script_id: &str,
+        variables: Option<HashMap<String, Dynamic>>,
+    ) -> ExecutionResult {
         let start_time = std::time::Instant::now();
 
         let script = match self.scripts.get(script_id) {
@@ -141,7 +143,7 @@ impl ScriptEngine {
                     error: Some("Script is disabled".to_string()),
                     execution_time_ms: start_time.elapsed().as_millis() as u64,
                 };
-            },
+            }
             None => {
                 return ExecutionResult {
                     success: false,
@@ -165,10 +167,16 @@ impl ScriptEngine {
         }
 
         // Execute the script
-        match self.engine.eval_with_scope::<Dynamic>(&mut scope, &script.content) {
+        match self
+            .engine
+            .eval_with_scope::<Dynamic>(&mut scope, &script.content)
+        {
             Ok(result) => {
                 let execution_time = start_time.elapsed().as_millis() as u64;
-                info!("Script executed successfully: {} ({}ms)", script.name, execution_time);
+                info!(
+                    "Script executed successfully: {} ({}ms)",
+                    script.name, execution_time
+                );
 
                 ExecutionResult {
                     success: true,
@@ -176,7 +184,7 @@ impl ScriptEngine {
                     error: None,
                     execution_time_ms: execution_time,
                 }
-            },
+            }
             Err(e) => {
                 let execution_time = start_time.elapsed().as_millis() as u64;
                 error!("Script execution failed: {} - {}", script.name, e);
@@ -192,7 +200,11 @@ impl ScriptEngine {
     }
 
     /// Execute script content directly
-    pub fn execute_content(&mut self, content: &str, variables: Option<HashMap<String, Dynamic>>) -> ExecutionResult {
+    pub fn execute_content(
+        &mut self,
+        content: &str,
+        variables: Option<HashMap<String, Dynamic>>,
+    ) -> ExecutionResult {
         let start_time = std::time::Instant::now();
 
         info!("Executing script content");
@@ -218,7 +230,7 @@ impl ScriptEngine {
                     error: None,
                     execution_time_ms: execution_time,
                 }
-            },
+            }
             Err(e) => {
                 let execution_time = start_time.elapsed().as_millis() as u64;
 
@@ -252,7 +264,11 @@ impl ScriptEngine {
     pub fn set_script_enabled(&mut self, script_id: &str, enabled: bool) -> Result<()> {
         if let Some(script) = self.scripts.get_mut(script_id) {
             script.enabled = enabled;
-            info!("Script '{}' {}", script_id, if enabled { "enabled" } else { "disabled" });
+            info!(
+                "Script '{}' {}",
+                script_id,
+                if enabled { "enabled" } else { "disabled" }
+            );
             Ok(())
         } else {
             Err(anyhow::anyhow!("Script not found: {}", script_id))

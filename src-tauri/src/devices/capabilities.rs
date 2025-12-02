@@ -4,10 +4,10 @@
 //! audio and video devices, including format support, performance characteristics,
 //! and advanced feature detection.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use tracing::{info, warn, debug, error};
+use tracing::{debug, error, info, warn};
 
 use crate::devices::{DeviceCapabilities, DeviceType};
 
@@ -97,25 +97,30 @@ impl DeviceCapabilityDetector {
     fn determine_device_type(&self, device_id: &str) -> Result<DeviceType> {
         let id_lower = device_id.to_lowercase();
 
-        if id_lower.contains("audio") ||
-           id_lower.contains("microphone") ||
-           id_lower.contains("speaker") ||
-           id_lower.contains("wasapi") ||
-           id_lower.contains("cpal-") ||
-           id_lower.contains("vb-cable") ||
-           id_lower.contains("voicemeeter") {
+        if id_lower.contains("audio")
+            || id_lower.contains("microphone")
+            || id_lower.contains("speaker")
+            || id_lower.contains("wasapi")
+            || id_lower.contains("cpal-")
+            || id_lower.contains("vb-cable")
+            || id_lower.contains("voicemeeter")
+        {
             Ok(DeviceType::Audio)
-        } else if id_lower.contains("video") ||
-                  id_lower.contains("camera") ||
-                  id_lower.contains("webcam") ||
-                  id_lower.contains("dshow-") ||
-                  id_lower.contains("mf-") ||
-                  id_lower.contains("virtual-") ||
-                  id_lower.contains("obs") {
+        } else if id_lower.contains("video")
+            || id_lower.contains("camera")
+            || id_lower.contains("webcam")
+            || id_lower.contains("dshow-")
+            || id_lower.contains("mf-")
+            || id_lower.contains("virtual-")
+            || id_lower.contains("obs")
+        {
             Ok(DeviceType::Video)
         } else {
             // Default to audio if we can't determine
-            warn!("Could not determine device type for ID: {}, defaulting to Audio", device_id);
+            warn!(
+                "Could not determine device type for ID: {}, defaulting to Audio",
+                device_id
+            );
             Ok(DeviceType::Audio)
         }
     }
@@ -138,12 +143,16 @@ impl DeviceCapabilityDetector {
         capabilities.buffer_size_range = self.detect_audio_buffer_size_range(device_id).await?;
 
         // Add audio-specific capability flags
-        capabilities.capability_flags.extend(self.detect_audio_capability_flags(device_id).await?);
+        capabilities
+            .capability_flags
+            .extend(self.detect_audio_capability_flags(device_id).await?);
 
-        info!("Detected {} sample rates, {} channel counts, {} formats",
-              capabilities.supported_sample_rates.len(),
-              capabilities.supported_channel_counts.len(),
-              capabilities.supported_formats.len());
+        info!(
+            "Detected {} sample rates, {} channel counts, {} formats",
+            capabilities.supported_sample_rates.len(),
+            capabilities.supported_channel_counts.len(),
+            capabilities.supported_formats.len()
+        );
 
         Ok(capabilities)
     }
@@ -154,7 +163,7 @@ impl DeviceCapabilityDetector {
 
         // Common sample rates to test
         let common_rates = vec![
-            8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000
+            8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000,
         ];
 
         for rate in common_rates {
@@ -175,11 +184,11 @@ impl DeviceCapabilityDetector {
         // For now, we assume most devices support common sample rates
 
         match sample_rate {
-            44100 | 48000 => true,  // Most devices support these
-            8000 | 16000 => true,   // Communication devices often support these
-            88200 | 96000 => false, // High-end devices only (conservative default)
+            44100 | 48000 => true,    // Most devices support these
+            8000 | 16000 => true,     // Communication devices often support these
+            88200 | 96000 => false,   // High-end devices only (conservative default)
             176400 | 192000 => false, // Professional devices only
-            _ => false, // Unknown rates
+            _ => false,               // Unknown rates
         }
     }
 
@@ -245,16 +254,19 @@ impl DeviceCapabilityDetector {
         // In a real implementation, you would attempt to open the device with this format
 
         match format {
-            "I16" | "F32" => true,  // Most devices support these
-            "U8" | "I32" => false,  // Less common
-            "I24" => false,         // Professional devices
-            "F64" => false,         // Rare
-            _ => false,             // Unknown formats
+            "I16" | "F32" => true, // Most devices support these
+            "U8" | "I32" => false, // Less common
+            "I24" => false,        // Professional devices
+            "F64" => false,        // Rare
+            _ => false,            // Unknown formats
         }
     }
 
     /// Detect audio buffer size range
-    async fn detect_audio_buffer_size_range(&self, device_id: &str) -> Result<Option<(usize, usize)>> {
+    async fn detect_audio_buffer_size_range(
+        &self,
+        device_id: &str,
+    ) -> Result<Option<(usize, usize)>> {
         // Common buffer size ranges
         let common_ranges = vec![
             (64, 128),
@@ -267,7 +279,10 @@ impl DeviceCapabilityDetector {
         ];
 
         for &(min_size, max_size) in &common_ranges {
-            if self.test_audio_buffer_range(device_id, min_size, max_size).await {
+            if self
+                .test_audio_buffer_range(device_id, min_size, max_size)
+                .await
+            {
                 return Ok(Some((min_size, max_size)));
             }
         }
@@ -277,7 +292,12 @@ impl DeviceCapabilityDetector {
     }
 
     /// Test if an audio buffer size range is supported
-    async fn test_audio_buffer_range(&self, _device_id: &str, _min_size: usize, _max_size: usize) -> bool {
+    async fn test_audio_buffer_range(
+        &self,
+        _device_id: &str,
+        _min_size: usize,
+        _max_size: usize,
+    ) -> bool {
         // This is a simplified implementation
         // Most audio devices support a range of buffer sizes
         true
@@ -324,12 +344,16 @@ impl DeviceCapabilityDetector {
         capabilities.supported_formats = self.detect_video_formats(device_id).await?;
 
         // Add video-specific capability flags
-        capabilities.capability_flags.extend(self.detect_video_capability_flags(device_id).await?);
+        capabilities
+            .capability_flags
+            .extend(self.detect_video_capability_flags(device_id).await?);
 
-        info!("Detected {} resolutions, {} frame rates, {} formats",
-              capabilities.supported_resolutions.len(),
-              capabilities.supported_frame_rates.len(),
-              capabilities.supported_formats.len());
+        info!(
+            "Detected {} resolutions, {} frame rates, {} formats",
+            capabilities.supported_resolutions.len(),
+            capabilities.supported_frame_rates.len(),
+            capabilities.supported_formats.len()
+        );
 
         Ok(capabilities)
     }
@@ -368,12 +392,12 @@ impl DeviceCapabilityDetector {
 
         // Common webcam resolutions are usually supported
         match (width, height) {
-            (640, 480) => true,   // VGA - almost universal
-            (1280, 720) => true,  // 720p - very common
+            (640, 480) => true,    // VGA - almost universal
+            (1280, 720) => true,   // 720p - very common
             (1920, 1080) => false, // 1080p - common but not universal
-            (320, 240) => true,   // QVGA - should be supported
-            (800, 600) => false,  // SVGA - less common
-            _ => false,           // Unknown resolutions
+            (320, 240) => true,    // QVGA - should be supported
+            (800, 600) => false,   // SVGA - less common
+            _ => false,            // Unknown resolutions
         }
     }
 
@@ -401,12 +425,12 @@ impl DeviceCapabilityDetector {
         // In a real implementation, you would attempt to configure the device with this frame rate
 
         match frame_rate as u32 {
-            30 => true,   // 30 FPS - very common
+            30 => true,      // 30 FPS - very common
             15 | 25 => true, // Common frame rates
-            60 => false,  // 60 FPS - high-end webcams only
-            24 => false,  // 24 FPS - cinema standard
-            120 => false, // 120 FPS - very rare
-            _ => false,   // Unknown frame rates
+            60 => false,     // 60 FPS - high-end webcams only
+            24 => false,     // 24 FPS - cinema standard
+            120 => false,    // 120 FPS - very rare
+            _ => false,      // Unknown frame rates
         }
     }
 
@@ -498,7 +522,8 @@ impl DeviceCapabilityDetector {
     /// Get cache statistics
     pub fn get_cache_stats(&self) -> CacheStats {
         let total_entries = self.capability_cache.len();
-        let expired_entries = self.capability_cache
+        let expired_entries = self
+            .capability_cache
             .values()
             .filter(|(_, timestamp)| timestamp.elapsed() >= Duration::from_secs(3600))
             .count();
@@ -539,53 +564,71 @@ impl AudioFormatDatabase {
         let mut formats = HashMap::new();
 
         // Common audio formats
-        formats.insert("U8".to_string(), AudioFormatInfo {
-            id: "U8".to_string(),
-            name: "Unsigned 8-bit PCM".to_string(),
-            bits_per_sample: 8,
-            is_float: false,
-            is_common: true,
-        });
+        formats.insert(
+            "U8".to_string(),
+            AudioFormatInfo {
+                id: "U8".to_string(),
+                name: "Unsigned 8-bit PCM".to_string(),
+                bits_per_sample: 8,
+                is_float: false,
+                is_common: true,
+            },
+        );
 
-        formats.insert("I16".to_string(), AudioFormatInfo {
-            id: "I16".to_string(),
-            name: "Signed 16-bit PCM".to_string(),
-            bits_per_sample: 16,
-            is_float: false,
-            is_common: true,
-        });
+        formats.insert(
+            "I16".to_string(),
+            AudioFormatInfo {
+                id: "I16".to_string(),
+                name: "Signed 16-bit PCM".to_string(),
+                bits_per_sample: 16,
+                is_float: false,
+                is_common: true,
+            },
+        );
 
-        formats.insert("I24".to_string(), AudioFormatInfo {
-            id: "I24".to_string(),
-            name: "Signed 24-bit PCM".to_string(),
-            bits_per_sample: 24,
-            is_float: false,
-            is_common: false,
-        });
+        formats.insert(
+            "I24".to_string(),
+            AudioFormatInfo {
+                id: "I24".to_string(),
+                name: "Signed 24-bit PCM".to_string(),
+                bits_per_sample: 24,
+                is_float: false,
+                is_common: false,
+            },
+        );
 
-        formats.insert("I32".to_string(), AudioFormatInfo {
-            id: "I32".to_string(),
-            name: "Signed 32-bit PCM".to_string(),
-            bits_per_sample: 32,
-            is_float: false,
-            is_common: true,
-        });
+        formats.insert(
+            "I32".to_string(),
+            AudioFormatInfo {
+                id: "I32".to_string(),
+                name: "Signed 32-bit PCM".to_string(),
+                bits_per_sample: 32,
+                is_float: false,
+                is_common: true,
+            },
+        );
 
-        formats.insert("F32".to_string(), AudioFormatInfo {
-            id: "F32".to_string(),
-            name: "32-bit Float".to_string(),
-            bits_per_sample: 32,
-            is_float: true,
-            is_common: true,
-        });
+        formats.insert(
+            "F32".to_string(),
+            AudioFormatInfo {
+                id: "F32".to_string(),
+                name: "32-bit Float".to_string(),
+                bits_per_sample: 32,
+                is_float: true,
+                is_common: true,
+            },
+        );
 
-        formats.insert("F64".to_string(), AudioFormatInfo {
-            id: "F64".to_string(),
-            name: "64-bit Double".to_string(),
-            bits_per_sample: 64,
-            is_float: true,
-            is_common: false,
-        });
+        formats.insert(
+            "F64".to_string(),
+            AudioFormatInfo {
+                id: "F64".to_string(),
+                name: "64-bit Double".to_string(),
+                bits_per_sample: 64,
+                is_float: true,
+                is_common: false,
+            },
+        );
 
         Self { formats }
     }
@@ -597,10 +640,7 @@ impl AudioFormatDatabase {
 
     /// Get all common formats
     pub fn get_common_formats(&self) -> Vec<&AudioFormatInfo> {
-        self.formats
-            .values()
-            .filter(|f| f.is_common)
-            .collect()
+        self.formats.values().filter(|f| f.is_common).collect()
     }
 }
 
@@ -630,61 +670,82 @@ impl VideoFormatDatabase {
         let mut formats = HashMap::new();
 
         // Common video formats
-        formats.insert("RGB24".to_string(), VideoFormatInfo {
-            id: "RGB24".to_string(),
-            name: "24-bit RGB".to_string(),
-            bits_per_pixel: 24,
-            compression_type: VideoCompressionType::Uncompressed,
-            is_common: true,
-        });
+        formats.insert(
+            "RGB24".to_string(),
+            VideoFormatInfo {
+                id: "RGB24".to_string(),
+                name: "24-bit RGB".to_string(),
+                bits_per_pixel: 24,
+                compression_type: VideoCompressionType::Uncompressed,
+                is_common: true,
+            },
+        );
 
-        formats.insert("RGB32".to_string(), VideoFormatInfo {
-            id: "RGB32".to_string(),
-            name: "32-bit RGB".to_string(),
-            bits_per_pixel: 32,
-            compression_type: VideoCompressionType::Uncompressed,
-            is_common: true,
-        });
+        formats.insert(
+            "RGB32".to_string(),
+            VideoFormatInfo {
+                id: "RGB32".to_string(),
+                name: "32-bit RGB".to_string(),
+                bits_per_pixel: 32,
+                compression_type: VideoCompressionType::Uncompressed,
+                is_common: true,
+            },
+        );
 
-        formats.insert("YUY2".to_string(), VideoFormatInfo {
-            id: "YUY2".to_string(),
-            name: "YUV 4:2:2 Packed".to_string(),
-            bits_per_pixel: 16,
-            compression_type: VideoCompressionType::Uncompressed,
-            is_common: true,
-        });
+        formats.insert(
+            "YUY2".to_string(),
+            VideoFormatInfo {
+                id: "YUY2".to_string(),
+                name: "YUV 4:2:2 Packed".to_string(),
+                bits_per_pixel: 16,
+                compression_type: VideoCompressionType::Uncompressed,
+                is_common: true,
+            },
+        );
 
-        formats.insert("UYVY".to_string(), VideoFormatInfo {
-            id: "UYVY".to_string(),
-            name: "YUV 4:2:2 Packed (Reversed)".to_string(),
-            bits_per_pixel: 16,
-            compression_type: VideoCompressionType::Uncompressed,
-            is_common: false,
-        });
+        formats.insert(
+            "UYVY".to_string(),
+            VideoFormatInfo {
+                id: "UYVY".to_string(),
+                name: "YUV 4:2:2 Packed (Reversed)".to_string(),
+                bits_per_pixel: 16,
+                compression_type: VideoCompressionType::Uncompressed,
+                is_common: false,
+            },
+        );
 
-        formats.insert("NV12".to_string(), VideoFormatInfo {
-            id: "NV12".to_string(),
-            name: "YUV 4:2:0 Planar".to_string(),
-            bits_per_pixel: 12,
-            compression_type: VideoCompressionType::Uncompressed,
-            is_common: true,
-        });
+        formats.insert(
+            "NV12".to_string(),
+            VideoFormatInfo {
+                id: "NV12".to_string(),
+                name: "YUV 4:2:0 Planar".to_string(),
+                bits_per_pixel: 12,
+                compression_type: VideoCompressionType::Uncompressed,
+                is_common: true,
+            },
+        );
 
-        formats.insert("MJPG".to_string(), VideoFormatInfo {
-            id: "MJPG".to_string(),
-            name: "Motion JPEG".to_string(),
-            bits_per_pixel: 0, // Variable due to compression
-            compression_type: VideoCompressionType::Lossy,
-            is_common: true,
-        });
+        formats.insert(
+            "MJPG".to_string(),
+            VideoFormatInfo {
+                id: "MJPG".to_string(),
+                name: "Motion JPEG".to_string(),
+                bits_per_pixel: 0, // Variable due to compression
+                compression_type: VideoCompressionType::Lossy,
+                is_common: true,
+            },
+        );
 
-        formats.insert("H264".to_string(), VideoFormatInfo {
-            id: "H264".to_string(),
-            name: "H.264/AVC".to_string(),
-            bits_per_pixel: 0, // Variable due to compression
-            compression_type: VideoCompressionType::Lossy,
-            is_common: false,
-        });
+        formats.insert(
+            "H264".to_string(),
+            VideoFormatInfo {
+                id: "H264".to_string(),
+                name: "H.264/AVC".to_string(),
+                bits_per_pixel: 0, // Variable due to compression
+                compression_type: VideoCompressionType::Lossy,
+                is_common: false,
+            },
+        );
 
         Self { formats }
     }
@@ -696,10 +757,7 @@ impl VideoFormatDatabase {
 
     /// Get all common formats
     pub fn get_common_formats(&self) -> Vec<&VideoFormatInfo> {
-        self.formats
-            .values()
-            .filter(|f| f.is_common)
-            .collect()
+        self.formats.values().filter(|f| f.is_common).collect()
     }
 }
 

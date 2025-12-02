@@ -7,17 +7,17 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::State;
-use tracing::{info, error, warn};
+use tracing::{error, info, warn};
 
-use crate::virtual_device::webcam::{VirtualWebcam, VideoInfo, BufferStatus};
-use crate::virtual_device::microphone::VirtualMicrophone;
-use crate::virtual_device::VirtualDeviceState;
 use crate::audio::{AudioMetadata, AudioValidator};
 use crate::audio_processor::{AudioProcessorStats, AudioVisualizationData};
 use crate::devices::{
-    DeviceEnumerator, DeviceFilter, DeviceFilterer, FullDeviceInfo,
-    DeviceType, DeviceCategory, DeviceOrigin,
+    DeviceCategory, DeviceEnumerator, DeviceFilter, DeviceFilterer, DeviceOrigin, DeviceType,
+    FullDeviceInfo,
 };
+use crate::virtual_device::microphone::VirtualMicrophone;
+use crate::virtual_device::webcam::{BufferStatus, VideoInfo, VirtualWebcam};
+use crate::virtual_device::VirtualDeviceState;
 
 // Include virtual device commands
 mod virtual_devices;
@@ -169,7 +169,7 @@ pub async fn init_webcam(state: State<'_, AppState>) -> Result<VideoResponse, St
                 video_info,
                 buffer_status: Some(buffer_status),
             })
-        },
+        }
         Err(e) => {
             error!("Failed to initialize virtual webcam: {}", e);
             Ok(VideoResponse {
@@ -186,7 +186,7 @@ pub async fn init_webcam(state: State<'_, AppState>) -> Result<VideoResponse, St
 #[tauri::command]
 pub async fn start_streaming(
     request: VideoRequest,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
 ) -> Result<VideoResponse, String> {
     info!("Starting video streaming from: {}", request.path);
 
@@ -201,7 +201,7 @@ pub async fn start_streaming(
                 video_info,
                 buffer_status: Some(buffer_status),
             })
-        },
+        }
         Err(e) => {
             error!("Failed to start streaming: {}", e);
             Ok(VideoResponse {
@@ -229,7 +229,7 @@ pub async fn stop_streaming(state: State<'_, AppState>) -> Result<VideoResponse,
                 video_info: None,
                 buffer_status: Some(buffer_status),
             })
-        },
+        }
         Err(e) => {
             error!("Failed to stop streaming: {}", e);
             Ok(VideoResponse {
@@ -264,12 +264,10 @@ pub async fn list_video_devices() -> Result<DevicesResponse, String> {
     info!("Listing video devices");
 
     match VirtualWebcam::list_devices().await {
-        Ok(devices) => {
-            Ok(DevicesResponse {
-                success: true,
-                devices,
-            })
-        },
+        Ok(devices) => Ok(DevicesResponse {
+            success: true,
+            devices,
+        }),
         Err(e) => {
             error!("Failed to list video devices: {}", e);
             Ok(DevicesResponse {
@@ -299,12 +297,14 @@ pub async fn validate_video_file(path: String) -> Result<VideoResponse, String> 
 
             Ok(VideoResponse {
                 success: true,
-                message: format!("Video file is valid: {}x{} @ {:.2} FPS",
-                               video_info.width, video_info.height, video_info.frame_rate),
+                message: format!(
+                    "Video file is valid: {}x{} @ {:.2} FPS",
+                    video_info.width, video_info.height, video_info.frame_rate
+                ),
                 video_info: Some(video_info),
                 buffer_status: None,
             })
-        },
+        }
         Err(e) => {
             error!("Failed to validate video file: {}", e);
             Ok(VideoResponse {
@@ -327,14 +327,12 @@ pub async fn init_microphone(state: State<'_, AppState>) -> Result<VideoResponse
     info!("Initializing virtual microphone");
 
     match state.microphone.initialize().await {
-        Ok(()) => {
-            Ok(VideoResponse {
-                success: true,
-                message: "Virtual microphone initialized successfully".to_string(),
-                video_info: None,
-                buffer_status: None,
-            })
-        },
+        Ok(()) => Ok(VideoResponse {
+            success: true,
+            message: "Virtual microphone initialized successfully".to_string(),
+            video_info: None,
+            buffer_status: None,
+        }),
         Err(e) => {
             error!("Failed to initialize virtual microphone: {}", e);
             Ok(VideoResponse {
@@ -351,7 +349,7 @@ pub async fn init_microphone(state: State<'_, AppState>) -> Result<VideoResponse
 #[tauri::command]
 pub async fn start_audio_streaming(
     request: AudioRequest,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
 ) -> Result<VideoResponse, String> {
     info!("Starting audio streaming from: {}", request.path);
 
@@ -382,7 +380,9 @@ pub async fn stop_audio_streaming(state: State<'_, AppState>) -> Result<VideoRes
 
 /// Get microphone status
 #[tauri::command]
-pub async fn get_microphone_status(state: State<'_, AppState>) -> Result<AudioStatusResponse, String> {
+pub async fn get_microphone_status(
+    state: State<'_, AppState>,
+) -> Result<AudioStatusResponse, String> {
     let is_active = state.microphone.is_active().await;
     let current_source = state.microphone.current_source().await;
     let volume = state.microphone.get_volume().await;
@@ -406,19 +406,17 @@ pub async fn get_microphone_status(state: State<'_, AppState>) -> Result<AudioSt
 #[tauri::command]
 pub async fn set_microphone_volume(
     request: VolumeRequest,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
 ) -> Result<VideoResponse, String> {
     info!("Setting microphone volume to: {}", request.volume);
 
     match state.microphone.set_volume(request.volume).await {
-        Ok(()) => {
-            Ok(VideoResponse {
-                success: true,
-                message: format!("Volume set to: {:.2}", request.volume),
-                video_info: None,
-                buffer_status: None,
-            })
-        },
+        Ok(()) => Ok(VideoResponse {
+            success: true,
+            message: format!("Volume set to: {:.2}", request.volume),
+            video_info: None,
+            buffer_status: None,
+        }),
         Err(e) => {
             error!("Failed to set volume: {}", e);
             Ok(VideoResponse {
@@ -435,7 +433,7 @@ pub async fn set_microphone_volume(
 #[tauri::command]
 pub async fn set_microphone_muted(
     request: MuteRequest,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
 ) -> Result<VideoResponse, String> {
     info!("Setting microphone mute state to: {}", request.muted);
 
@@ -470,12 +468,10 @@ pub async fn list_audio_devices() -> Result<DevicesResponse, String> {
     info!("Listing audio devices");
 
     match VirtualMicrophone::list_devices().await {
-        Ok(devices) => {
-            Ok(DevicesResponse {
-                success: true,
-                devices,
-            })
-        },
+        Ok(devices) => Ok(DevicesResponse {
+            success: true,
+            devices,
+        }),
         Err(e) => {
             error!("Failed to list audio devices: {}", e);
             Ok(DevicesResponse {
@@ -503,11 +499,13 @@ pub async fn validate_audio_file(path: String) -> Result<AudioMetadataResponse, 
 
                     Ok(AudioMetadataResponse {
                         success: true,
-                        message: format!("Audio file is valid: {} channels, {} Hz, {}",
-                                       metadata.channels, metadata.sample_rate, metadata.codec),
+                        message: format!(
+                            "Audio file is valid: {} channels, {} Hz, {}",
+                            metadata.channels, metadata.sample_rate, metadata.codec
+                        ),
                         metadata: Some(metadata),
                     })
-                },
+                }
                 Err(e) => {
                     error!("Failed to decode audio file: {}", e);
                     Ok(AudioMetadataResponse {
@@ -517,7 +515,7 @@ pub async fn validate_audio_file(path: String) -> Result<AudioMetadataResponse, 
                     })
                 }
             }
-        },
+        }
         Err(e) => {
             error!("Failed to validate audio file: {}", e);
             Ok(AudioMetadataResponse {
@@ -551,7 +549,7 @@ pub async fn get_supported_audio_formats() -> Result<DevicesResponse, String> {
 #[tauri::command]
 pub async fn enumerate_all_devices(
     filter: Option<DeviceFilterRequest>,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
 ) -> Result<DeviceEnumerationResponse, String> {
     info!("Enumerating all devices");
 
@@ -570,8 +568,14 @@ pub async fn enumerate_all_devices(
 
             let virtual_count = devices.iter().filter(|d| d.info.is_virtual()).count();
             let physical_count = devices.iter().filter(|d| d.info.is_physical()).count();
-            let audio_count = devices.iter().filter(|d| d.info.device_type == DeviceType::Audio).count();
-            let video_count = devices.iter().filter(|d| d.info.device_type == DeviceType::Video).count();
+            let audio_count = devices
+                .iter()
+                .filter(|d| d.info.device_type == DeviceType::Audio)
+                .count();
+            let video_count = devices
+                .iter()
+                .filter(|d| d.info.device_type == DeviceType::Video)
+                .count();
 
             Ok(DeviceEnumerationResponse {
                 success: true,
@@ -584,7 +588,7 @@ pub async fn enumerate_all_devices(
                 video_count,
                 timestamp: enumeration_result.timestamp.to_rfc3339(),
             })
-        },
+        }
         Err(e) => {
             error!("Failed to enumerate devices: {}", e);
             Ok(DeviceEnumerationResponse {
@@ -606,7 +610,7 @@ pub async fn enumerate_all_devices(
 #[tauri::command]
 pub async fn enumerate_audio_devices(
     filter: Option<DeviceFilterRequest>,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
 ) -> Result<DeviceEnumerationResponse, String> {
     info!("Enumerating audio devices");
 
@@ -637,7 +641,7 @@ pub async fn enumerate_audio_devices(
                 video_count: 0,
                 timestamp: enumeration_result.timestamp.to_rfc3339(),
             })
-        },
+        }
         Err(e) => {
             error!("Failed to enumerate audio devices: {}", e);
             Ok(DeviceEnumerationResponse {
@@ -659,7 +663,7 @@ pub async fn enumerate_audio_devices(
 #[tauri::command]
 pub async fn enumerate_video_devices(
     filter: Option<DeviceFilterRequest>,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
 ) -> Result<DeviceEnumerationResponse, String> {
     info!("Enumerating video devices");
 
@@ -690,7 +694,7 @@ pub async fn enumerate_video_devices(
                 video_count: devices.len(),
                 timestamp: enumeration_result.timestamp.to_rfc3339(),
             })
-        },
+        }
         Err(e) => {
             error!("Failed to enumerate video devices: {}", e);
             Ok(DeviceEnumerationResponse {
@@ -712,19 +716,24 @@ pub async fn enumerate_video_devices(
 #[tauri::command]
 pub async fn get_device_capabilities(
     device_id: String,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
 ) -> Result<DeviceCapabilityResponse, String> {
     info!("Getting capabilities for device: {}", device_id);
 
-    match state.device_enumerator.get_device_capabilities(&device_id).await {
-        Ok(capabilities) => {
-            Ok(DeviceCapabilityResponse {
-                success: true,
-                message: format!("Successfully retrieved capabilities for device: {}", device_id),
-                device_id,
-                capabilities: Some(capabilities),
-            })
-        },
+    match state
+        .device_enumerator
+        .get_device_capabilities(&device_id)
+        .await
+    {
+        Ok(capabilities) => Ok(DeviceCapabilityResponse {
+            success: true,
+            message: format!(
+                "Successfully retrieved capabilities for device: {}",
+                device_id
+            ),
+            device_id,
+            capabilities: Some(capabilities),
+        }),
         Err(e) => {
             error!("Failed to get device capabilities: {}", e);
             Ok(DeviceCapabilityResponse {
@@ -741,19 +750,17 @@ pub async fn get_device_capabilities(
 #[tauri::command]
 pub async fn is_device_virtual(
     device_id: String,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
 ) -> Result<DeviceVirtualStatusResponse, String> {
     info!("Checking virtual status for device: {}", device_id);
 
     match state.device_enumerator.is_virtual_device(&device_id).await {
-        Ok(is_virtual) => {
-            Ok(DeviceVirtualStatusResponse {
-                success: true,
-                message: format!("Device {} virtual status: {}", device_id, is_virtual),
-                device_id,
-                is_virtual: Some(is_virtual),
-            })
-        },
+        Ok(is_virtual) => Ok(DeviceVirtualStatusResponse {
+            success: true,
+            message: format!("Device {} virtual status: {}", device_id, is_virtual),
+            device_id,
+            is_virtual: Some(is_virtual),
+        }),
         Err(e) => {
             error!("Failed to check device virtual status: {}", e);
             Ok(DeviceVirtualStatusResponse {
@@ -770,13 +777,14 @@ pub async fn is_device_virtual(
 #[tauri::command]
 pub async fn get_virtual_devices(
     device_type: Option<String>,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
 ) -> Result<DeviceEnumerationResponse, String> {
     info!("Getting virtual devices");
 
     match state.device_enumerator.enumerate_all_devices().await {
         Ok(enumeration_result) => {
-            let mut virtual_devices = enumeration_result.get_virtual_devices()
+            let mut virtual_devices = enumeration_result
+                .get_virtual_devices()
                 .into_iter()
                 .cloned()
                 .collect::<Vec<_>>();
@@ -788,8 +796,14 @@ pub async fn get_virtual_devices(
                 }
             }
 
-            let audio_count = virtual_devices.iter().filter(|d| d.info.device_type == DeviceType::Audio).count();
-            let video_count = virtual_devices.iter().filter(|d| d.info.device_type == DeviceType::Video).count();
+            let audio_count = virtual_devices
+                .iter()
+                .filter(|d| d.info.device_type == DeviceType::Audio)
+                .count();
+            let video_count = virtual_devices
+                .iter()
+                .filter(|d| d.info.device_type == DeviceType::Video)
+                .count();
 
             Ok(DeviceEnumerationResponse {
                 success: true,
@@ -802,7 +816,7 @@ pub async fn get_virtual_devices(
                 video_count,
                 timestamp: enumeration_result.timestamp.to_rfc3339(),
             })
-        },
+        }
         Err(e) => {
             error!("Failed to get virtual devices: {}", e);
             Ok(DeviceEnumerationResponse {
@@ -824,13 +838,14 @@ pub async fn get_virtual_devices(
 #[tauri::command]
 pub async fn get_physical_devices(
     device_type: Option<String>,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
 ) -> Result<DeviceEnumerationResponse, String> {
     info!("Getting physical devices");
 
     match state.device_enumerator.enumerate_all_devices().await {
         Ok(enumeration_result) => {
-            let mut physical_devices = enumeration_result.get_physical_devices()
+            let mut physical_devices = enumeration_result
+                .get_physical_devices()
                 .into_iter()
                 .cloned()
                 .collect::<Vec<_>>();
@@ -842,8 +857,14 @@ pub async fn get_physical_devices(
                 }
             }
 
-            let audio_count = physical_devices.iter().filter(|d| d.info.device_type == DeviceType::Audio).count();
-            let video_count = physical_devices.iter().filter(|d| d.info.device_type == DeviceType::Video).count();
+            let audio_count = physical_devices
+                .iter()
+                .filter(|d| d.info.device_type == DeviceType::Audio)
+                .count();
+            let video_count = physical_devices
+                .iter()
+                .filter(|d| d.info.device_type == DeviceType::Video)
+                .count();
 
             Ok(DeviceEnumerationResponse {
                 success: true,
@@ -856,7 +877,7 @@ pub async fn get_physical_devices(
                 video_count,
                 timestamp: enumeration_result.timestamp.to_rfc3339(),
             })
-        },
+        }
         Err(e) => {
             error!("Failed to get physical devices: {}", e);
             Ok(DeviceEnumerationResponse {
@@ -878,7 +899,7 @@ pub async fn get_physical_devices(
 #[tauri::command]
 pub async fn refresh_device_list(
     device_type: Option<String>,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
 ) -> Result<DeviceEnumerationResponse, String> {
     info!("Refreshing device list");
 
@@ -893,8 +914,14 @@ pub async fn refresh_device_list(
             let devices = enumeration_result.devices;
             let virtual_count = devices.iter().filter(|d| d.info.is_virtual()).count();
             let physical_count = devices.iter().filter(|d| d.info.is_physical()).count();
-            let audio_count = devices.iter().filter(|d| d.info.device_type == DeviceType::Audio).count();
-            let video_count = devices.iter().filter(|d| d.info.device_type == DeviceType::Video).count();
+            let audio_count = devices
+                .iter()
+                .filter(|d| d.info.device_type == DeviceType::Audio)
+                .count();
+            let video_count = devices
+                .iter()
+                .filter(|d| d.info.device_type == DeviceType::Video)
+                .count();
 
             Ok(DeviceEnumerationResponse {
                 success: true,
@@ -907,7 +934,7 @@ pub async fn refresh_device_list(
                 video_count,
                 timestamp: enumeration_result.timestamp.to_rfc3339(),
             })
-        },
+        }
         Err(e) => {
             error!("Failed to refresh device list: {}", e);
             Ok(DeviceEnumerationResponse {
@@ -929,7 +956,9 @@ pub async fn refresh_device_list(
 fn convert_filter_request(request: DeviceFilterRequest) -> DeviceFilter {
     DeviceFilter {
         device_type: request.device_type.and_then(|s| parse_device_type(&s).ok()),
-        category: request.category.and_then(|s| parse_device_category(&s).ok()),
+        category: request
+            .category
+            .and_then(|s| parse_device_category(&s).ok()),
         origin: request.origin.and_then(|s| parse_device_origin(&s).ok()),
         available_only: request.available_only.unwrap_or(false),
         virtual_only: request.virtual_only.unwrap_or(false),

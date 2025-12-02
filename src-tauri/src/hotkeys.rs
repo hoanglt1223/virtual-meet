@@ -3,10 +3,13 @@
 //! This module handles global hotkey registration, management, and execution.
 
 use anyhow::Result;
+use global_hotkey::{
+    hotkey::{Code, Modifiers},
+    GlobalHotkeyManager, Hotkey,
+};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tracing::{info, error, warn, debug};
-use global_hotkey::{Hotkey, GlobalHotkeyManager, hotkey::{Modifiers, Code}};
+use tracing::{debug, error, info, warn};
 
 /// Enhanced hotkey definition with global registration support
 #[derive(Debug, Clone)]
@@ -49,7 +52,10 @@ impl HotkeyManager {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        info!("Registering hotkey: {} ({})", hotkey.name, hotkey.key_combination);
+        info!(
+            "Registering hotkey: {} ({})",
+            hotkey.name, hotkey.key_combination
+        );
 
         // Check for conflicts
         if self.has_conflict(&hotkey.key_combination, &hotkey.id) {
@@ -76,14 +82,19 @@ impl HotkeyManager {
         if hotkey.global {
             if let Some(ref mut manager) = self.global_manager {
                 manager.register(global_hotkey)?;
-                info!("Globally registered hotkey: {} ({})", hotkey.name, hotkey.key_combination);
+                info!(
+                    "Globally registered hotkey: {} ({})",
+                    hotkey.name, hotkey.key_combination
+                );
             } else {
                 warn!("Global hotkey manager not available, hotkey will be local only");
             }
         }
 
-        self.registered_hotkeys.insert(hotkey.id.clone(), enhanced_hotkey);
-        self.hotkey_callbacks.insert(hotkey.id.clone(), Arc::new(callback));
+        self.registered_hotkeys
+            .insert(hotkey.id.clone(), enhanced_hotkey);
+        self.hotkey_callbacks
+            .insert(hotkey.id.clone(), Arc::new(callback));
 
         Ok(())
     }
@@ -95,7 +106,9 @@ impl HotkeyManager {
         if let Some(hotkey) = self.registered_hotkeys.get(hotkey_id) {
             // Unregister from OS if it was global
             if hotkey.global {
-                if let (Some(ref mut manager), Some(key_code)) = (&mut self.global_manager, hotkey.key_code) {
+                if let (Some(ref mut manager), Some(key_code)) =
+                    (&mut self.global_manager, hotkey.key_code)
+                {
                     let modifiers = hotkey.modifiers.unwrap_or(Modifiers::NONE);
                     let global_hotkey = Hotkey::new(modifiers, key_code);
                     if let Err(e) = manager.unregister(global_hotkey) {
@@ -138,7 +151,11 @@ impl HotkeyManager {
     pub fn set_hotkey_enabled(&mut self, hotkey_id: &str, enabled: bool) -> Result<()> {
         if let Some(hotkey) = self.registered_hotkeys.get_mut(hotkey_id) {
             hotkey.enabled = enabled;
-            info!("Hotkey '{}' {}", hotkey_id, if enabled { "enabled" } else { "disabled" });
+            info!(
+                "Hotkey '{}' {}",
+                hotkey_id,
+                if enabled { "enabled" } else { "disabled" }
+            );
             Ok(())
         } else {
             Err(anyhow::anyhow!("Hotkey not found: {}", hotkey_id))
@@ -231,7 +248,10 @@ impl HotkeyManager {
 
         match key_code {
             Some(code) => Ok(Hotkey::new(modifiers, code)),
-            None => Err(anyhow::anyhow!("No valid key found in combination: {}", combination)),
+            None => Err(anyhow::anyhow!(
+                "No valid key found in combination: {}",
+                combination
+            )),
         }
     }
 }
@@ -253,9 +273,13 @@ pub fn validate_key_combination(combination: &str) -> bool {
             _ if part.len() == 1 => has_key = true,
             _ => {
                 // Check for function keys, arrow keys, etc.
-                if part.starts_with("F") || part.starts_with("NUMPAD") ||
-                   part == "SPACE" || part == "ENTER" || part == "ESCAPE" ||
-                   part.ends_with("ARROW") {
+                if part.starts_with("F")
+                    || part.starts_with("NUMPAD")
+                    || part == "SPACE"
+                    || part == "ENTER"
+                    || part == "ESCAPE"
+                    || part.ends_with("ARROW")
+                {
                     has_key = true;
                 }
             }
@@ -284,7 +308,9 @@ mod tests {
         };
 
         // Register hotkey
-        assert!(manager.register_hotkey(hotkey.clone(), || println!("Hotkey triggered!")).is_ok());
+        assert!(manager
+            .register_hotkey(hotkey.clone(), || println!("Hotkey triggered!"))
+            .is_ok());
 
         // Check for conflicts
         let conflict_hotkey = HotkeyDefinition {
@@ -297,7 +323,9 @@ mod tests {
             modifiers: None,
             key_code: None,
         };
-        assert!(manager.register_hotkey(conflict_hotkey, || println!("Should not trigger")).is_err());
+        assert!(manager
+            .register_hotkey(conflict_hotkey, || println!("Should not trigger"))
+            .is_err());
 
         // Execute hotkey
         assert!(manager.execute_hotkey("test").is_ok());

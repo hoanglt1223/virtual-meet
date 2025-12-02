@@ -3,22 +3,25 @@
 //! This module provides real-time recording of current video + audio output to MP4 files
 //! with configurable resolution (720p/1080p) and quality presets, including proper A/V sync.
 
-use anyhow::{Result, anyhow};
-use std::sync::{Arc, Mutex as StdMutex, atomic::{AtomicBool, AtomicU64, Ordering}};
-use std::time::{Duration, Instant};
-use std::path::{Path, PathBuf};
-use std::thread;
+use anyhow::{anyhow, Result};
 use std::collections::VecDeque;
+use std::path::{Path, PathBuf};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, Mutex as StdMutex,
+};
+use std::thread;
+use std::time::{Duration, Instant};
 
-use tracing::{info, warn, error, debug};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tracing::{debug, error, info, warn};
 
 use crate::audio::{AudioFrameData, AudioSampleFormat};
-use crate::devices::{FullDeviceInfo, DeviceType, DeviceOrigin};
-use crate::recording::config::{
-    RecordingConfig, VideoResolution, VideoQualityPreset, AudioQualityPreset
-};
+use crate::devices::{DeviceOrigin, DeviceType, FullDeviceInfo};
 use crate::recording::av_sync::AVSynchronizer;
+use crate::recording::config::{
+    AudioQualityPreset, RecordingConfig, VideoQualityPreset, VideoResolution,
+};
 use crate::recording::mp4_muxer::MP4Muxer;
 
 /// Recording state
@@ -245,7 +248,10 @@ impl CombinedRecorder {
 
         // Check state
         {
-            let mut state = self.state.lock().map_err(|_| anyhow!("Failed to lock recording state"))?;
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock recording state"))?;
             if *state != RecordingState::Idle {
                 return Err(anyhow!("Cannot start recording - not idle"));
             }
@@ -257,7 +263,10 @@ impl CombinedRecorder {
 
         // Clone configuration
         let config = {
-            let config_guard = self.config.lock().map_err(|_| anyhow!("Failed to lock config"))?;
+            let config_guard = self
+                .config
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock config"))?;
             config_guard.clone()
         };
 
@@ -267,36 +276,55 @@ impl CombinedRecorder {
 
         // Update current session
         {
-            let mut current_session = self.current_session.lock().map_err(|_| anyhow!("Failed to lock session"))?;
+            let mut current_session = self
+                .current_session
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock session"))?;
             *current_session = Some(session.clone());
         }
 
         // Initialize MP4 muxer
         {
-            let mut muxer_guard = self.muxer.lock().map_err(|_| anyhow!("Failed to lock muxer"))?;
+            let mut muxer_guard = self
+                .muxer
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock muxer"))?;
             *muxer_guard = Some(MP4Muxer::new(&session.output_path, &session.config)?);
         }
 
         // Reset AV synchronizer
         {
-            let mut av_sync = self.av_sync.lock().map_err(|_| anyhow!("Failed to lock AV synchronizer"))?;
+            let mut av_sync = self
+                .av_sync
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock AV synchronizer"))?;
             av_sync.reset();
         }
 
         // Update statistics
         {
-            let mut stats = self.stats.lock().map_err(|_| anyhow!("Failed to lock stats"))?;
+            let mut stats = self
+                .stats
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock stats"))?;
             stats.state = RecordingState::Recording;
             stats.session = Some(session.clone());
         }
 
         // Update state
         {
-            let mut state = self.state.lock().map_err(|_| anyhow!("Failed to lock recording state"))?;
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock recording state"))?;
             *state = RecordingState::Recording;
         }
 
-        info!("Started recording session {} to {}", session_id, session.output_path.display());
+        info!(
+            "Started recording session {} to {}",
+            session_id,
+            session.output_path.display()
+        );
         Ok(session_id)
     }
 
@@ -304,7 +332,10 @@ impl CombinedRecorder {
     pub fn stop_recording(&mut self) -> Result<()> {
         // Check state
         {
-            let mut state = self.state.lock().map_err(|_| anyhow!("Failed to lock recording state"))?;
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock recording state"))?;
             if *state != RecordingState::Recording {
                 return Err(anyhow!("Cannot stop recording - not recording"));
             }
@@ -313,7 +344,10 @@ impl CombinedRecorder {
 
         // Stop session
         let session = {
-            let mut current_session = self.current_session.lock().map_err(|_| anyhow!("Failed to lock session"))?;
+            let mut current_session = self
+                .current_session
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock session"))?;
             if let Some(ref mut session) = *current_session {
                 session.stop();
                 Some(session.clone())
@@ -324,7 +358,10 @@ impl CombinedRecorder {
 
         // Finalize MP4 muxer
         {
-            let mut muxer_guard = self.muxer.lock().map_err(|_| anyhow!("Failed to lock muxer"))?;
+            let mut muxer_guard = self
+                .muxer
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock muxer"))?;
             if let Some(ref mut muxer) = *muxer_guard {
                 muxer.finalize()?;
                 info!("Finalized MP4 recording");
@@ -334,7 +371,10 @@ impl CombinedRecorder {
 
         // Update statistics
         {
-            let mut stats = self.stats.lock().map_err(|_| anyhow!("Failed to lock stats"))?;
+            let mut stats = self
+                .stats
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock stats"))?;
             stats.state = RecordingState::Idle;
             if let Some(ref session) = session {
                 stats.total_recording_time += session.duration;
@@ -343,12 +383,18 @@ impl CombinedRecorder {
 
         // Update state
         {
-            let mut state = self.state.lock().map_err(|_| anyhow!("Failed to lock recording state"))?;
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock recording state"))?;
             *state = RecordingState::Idle;
         }
 
         if let Some(session) = session {
-            info!("Stopped recording session {}, duration: {:?}", session.id, session.duration);
+            info!(
+                "Stopped recording session {}, duration: {:?}",
+                session.id, session.duration
+            );
         }
 
         Ok(())
@@ -358,7 +404,10 @@ impl CombinedRecorder {
     pub fn submit_video_frame(&mut self, frame: VideoFrameData) -> Result<()> {
         // Check if we're recording
         {
-            let state = self.state.lock().map_err(|_| anyhow!("Failed to lock recording state"))?;
+            let state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock recording state"))?;
             if *state != RecordingState::Recording {
                 return Ok(()); // Silently ignore frames when not recording
             }
@@ -374,9 +423,14 @@ impl CombinedRecorder {
 
         // Send to recording thread
         {
-            let sender_guard = self.frame_sender.lock().map_err(|_| anyhow!("Failed to lock frame sender"))?;
+            let sender_guard = self
+                .frame_sender
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock frame sender"))?;
             if let Some(ref sender) = *sender_guard {
-                sender.send(av_frame).map_err(|_| anyhow!("Failed to send video frame"))?;
+                sender
+                    .send(av_frame)
+                    .map_err(|_| anyhow!("Failed to send video frame"))?;
             }
         }
 
@@ -387,7 +441,10 @@ impl CombinedRecorder {
     pub fn submit_audio_frame(&mut self, frame: AudioFrameData) -> Result<()> {
         // Check if we're recording
         {
-            let state = self.state.lock().map_err(|_| anyhow!("Failed to lock recording state"))?;
+            let state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock recording state"))?;
             if *state != RecordingState::Recording {
                 return Ok(()); // Silently ignore frames when not recording
             }
@@ -403,9 +460,14 @@ impl CombinedRecorder {
 
         // Send to recording thread
         {
-            let sender_guard = self.frame_sender.lock().map_err(|_| anyhow!("Failed to lock frame sender"))?;
+            let sender_guard = self
+                .frame_sender
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock frame sender"))?;
             if let Some(ref sender) = *sender_guard {
-                sender.send(av_frame).map_err(|_| anyhow!("Failed to send audio frame"))?;
+                sender
+                    .send(av_frame)
+                    .map_err(|_| anyhow!("Failed to send audio frame"))?;
             }
         }
 
@@ -416,13 +478,19 @@ impl CombinedRecorder {
     pub fn update_config(&mut self, config: RecordingConfig) -> Result<()> {
         // Only allow config changes when not recording
         {
-            let state = self.state.lock().map_err(|_| anyhow!("Failed to lock recording state"))?;
+            let state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock recording state"))?;
             if *state == RecordingState::Recording {
                 return Err(anyhow!("Cannot update configuration while recording"));
             }
         }
 
-        let mut config_guard = self.config.lock().map_err(|_| anyhow!("Failed to lock config"))?;
+        let mut config_guard = self
+            .config
+            .lock()
+            .map_err(|_| anyhow!("Failed to lock config"))?;
         *config_guard = config;
 
         info!("Updated recording configuration");
@@ -431,19 +499,28 @@ impl CombinedRecorder {
 
     /// Get current recording statistics
     pub fn get_stats(&self) -> Result<RecordingStats> {
-        let stats = self.stats.lock().map_err(|_| anyhow!("Failed to lock stats"))?;
+        let stats = self
+            .stats
+            .lock()
+            .map_err(|_| anyhow!("Failed to lock stats"))?;
         Ok(stats.clone())
     }
 
     /// Get current recording state
     pub fn get_state(&self) -> Result<RecordingState> {
-        let state = self.state.lock().map_err(|_| anyhow!("Failed to lock recording state"))?;
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow!("Failed to lock recording state"))?;
         Ok(*state)
     }
 
     /// Get current session information
     pub fn get_current_session(&self) -> Result<Option<RecordingSession>> {
-        let session = self.current_session.lock().map_err(|_| anyhow!("Failed to lock session"))?;
+        let session = self
+            .current_session
+            .lock()
+            .map_err(|_| anyhow!("Failed to lock session"))?;
         Ok(session.clone())
     }
 
@@ -453,7 +530,10 @@ impl CombinedRecorder {
 
         // Store the sender
         {
-            let mut sender_guard = self.frame_sender.lock().map_err(|_| anyhow!("Failed to lock frame sender"))?;
+            let mut sender_guard = self
+                .frame_sender
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock frame sender"))?;
             *sender_guard = Some(frame_tx);
         }
 
@@ -478,7 +558,10 @@ impl CombinedRecorder {
 
         // Store the thread handle
         {
-            let mut thread_guard = self.recording_thread.lock().map_err(|_| anyhow!("Failed to lock recording thread"))?;
+            let mut thread_guard = self
+                .recording_thread
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock recording thread"))?;
             *thread_guard = Some(thread_handle);
         }
 
@@ -508,13 +591,9 @@ impl CombinedRecorder {
             match frame_rx.recv_timeout(Duration::from_millis(100)) {
                 Ok(av_frame) => {
                     // Process the frame
-                    if let Err(e) = Self::process_frame(
-                        av_frame,
-                        &av_sync,
-                        &muxer,
-                        &current_session,
-                        &stats,
-                    ) {
+                    if let Err(e) =
+                        Self::process_frame(av_frame, &av_sync, &muxer, &current_session, &stats)
+                    {
                         error!("Error processing frame: {}", e);
                     }
                 }
@@ -542,13 +621,17 @@ impl CombinedRecorder {
     ) -> Result<()> {
         // Synchronize the frame
         let synced_frame = {
-            let mut sync_guard = av_sync.lock().map_err(|_| anyhow!("Failed to lock AV synchronizer"))?;
+            let mut sync_guard = av_sync
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock AV synchronizer"))?;
             sync_guard.synchronize_frame(av_frame)?
         };
 
         // Get muxer
         let mut muxer_guard = muxer.lock().map_err(|_| anyhow!("Failed to lock muxer"))?;
-        let muxer = muxer_guard.as_mut().ok_or_else(|| anyhow!("No muxer available"))?;
+        let muxer = muxer_guard
+            .as_mut()
+            .ok_or_else(|| anyhow!("No muxer available"))?;
 
         // Process based on frame type
         if let Some(video_frame) = synced_frame.video_frame {
@@ -665,8 +748,8 @@ pub mod utils {
         frame_number: u64,
     ) -> AudioFrameData {
         let duration = Duration::from_secs_f64(
-            data.len() as f64 /
-            (channels as f64 * sample_rate as f64 * sample_format.bytes_per_sample() as f64)
+            data.len() as f64
+                / (channels as f64 * sample_rate as f64 * sample_format.bytes_per_sample() as f64),
         );
 
         AudioFrameData {
@@ -683,20 +766,14 @@ pub mod utils {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::utils::*;
+    use super::*;
     use tempfile::tempdir;
 
     #[test]
     fn test_video_frame_creation() {
         let rgb_data = vec![255; 1920 * 1080 * 3]; // 1080p RGB frame
-        let frame = create_video_frame_rgb(
-            rgb_data,
-            1920,
-            1080,
-            Duration::from_secs(0),
-            1,
-        );
+        let frame = create_video_frame_rgb(rgb_data, 1920, 1080, Duration::from_secs(0), 1);
 
         assert_eq!(frame.width, 1920);
         assert_eq!(frame.height, 1080);
@@ -728,11 +805,7 @@ mod tests {
         let output_path = output_dir.path().join("test.mp4");
         let config = RecordingConfig::default();
 
-        let mut session = RecordingSession::new(
-            "test-session".to_string(),
-            output_path,
-            config,
-        );
+        let mut session = RecordingSession::new("test-session".to_string(), output_path, config);
 
         assert_eq!(session.id, "test-session");
         assert!(!session.is_recording());

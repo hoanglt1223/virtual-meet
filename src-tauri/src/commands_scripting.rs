@@ -6,8 +6,8 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex as StdMutex};
-use tauri::{command, State, AppHandle};
-use tracing::{info, error, warn, debug};
+use tauri::{command, AppHandle, State};
+use tracing::{debug, error, info, warn};
 
 use crate::AppState;
 
@@ -177,7 +177,9 @@ pub async fn execute_script(
     info!("Executing script: {}", request.script_id);
 
     let scripting_state = app.state::<std::sync::Mutex<ScriptingState>>();
-    let state = scripting_state.lock().map_err(|e| format!("Failed to lock scripting state: {}", e))?;
+    let state = scripting_state
+        .lock()
+        .map_err(|e| format!("Failed to lock scripting state: {}", e))?;
 
     let script = match state.scripts.get(&request.script_id) {
         Some(script) => script.clone(),
@@ -210,39 +212,33 @@ pub async fn execute_script(
 
     match script.language {
         ScriptLanguage::Rhai => execute_rhai_script(&script, request.parameters, &state),
-        ScriptLanguage::JavaScript => {
-            Ok(ScriptExecutionResult {
-                success: false,
-                script_id: request.script_id,
-                output: String::new(),
-                error: Some("JavaScript execution not implemented".to_string()),
-                execution_time_ms: start_time.elapsed().as_millis() as u64,
-                variables: HashMap::new(),
-                logs: vec![],
-            })
-        },
-        ScriptLanguage::Python => {
-            Ok(ScriptExecutionResult {
-                success: false,
-                script_id: request.script_id,
-                output: String::new(),
-                error: Some("Python execution not implemented".to_string()),
-                execution_time_ms: start_time.elapsed().as_millis() as u64,
-                variables: HashMap::new(),
-                logs: vec![],
-            })
-        },
-        ScriptLanguage::Custom(_) => {
-            Ok(ScriptExecutionResult {
-                success: false,
-                script_id: request.script_id,
-                output: String::new(),
-                error: Some("Custom language execution not implemented".to_string()),
-                execution_time_ms: start_time.elapsed().as_millis() as u64,
-                variables: HashMap::new(),
-                logs: vec![],
-            })
-        },
+        ScriptLanguage::JavaScript => Ok(ScriptExecutionResult {
+            success: false,
+            script_id: request.script_id,
+            output: String::new(),
+            error: Some("JavaScript execution not implemented".to_string()),
+            execution_time_ms: start_time.elapsed().as_millis() as u64,
+            variables: HashMap::new(),
+            logs: vec![],
+        }),
+        ScriptLanguage::Python => Ok(ScriptExecutionResult {
+            success: false,
+            script_id: request.script_id,
+            output: String::new(),
+            error: Some("Python execution not implemented".to_string()),
+            execution_time_ms: start_time.elapsed().as_millis() as u64,
+            variables: HashMap::new(),
+            logs: vec![],
+        }),
+        ScriptLanguage::Custom(_) => Ok(ScriptExecutionResult {
+            success: false,
+            script_id: request.script_id,
+            output: String::new(),
+            error: Some("Custom language execution not implemented".to_string()),
+            execution_time_ms: start_time.elapsed().as_millis() as u64,
+            variables: HashMap::new(),
+            logs: vec![],
+        }),
     }
 }
 
@@ -260,7 +256,10 @@ pub async fn create_script(
     // Validate script syntax
     let validation_result = validate_script_syntax(&request.content, &request.language)?;
     if !validation_result.is_valid {
-        return Err(format!("Script syntax validation failed: {:?}", validation_result.errors));
+        return Err(format!(
+            "Script syntax validation failed: {:?}",
+            validation_result.errors
+        ));
     }
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -283,11 +282,16 @@ pub async fn create_script(
 
     // Store script
     let scripting_state = app.state::<std::sync::Mutex<ScriptingState>>();
-    let mut state = scripting_state.lock().map_err(|e| format!("Failed to lock scripting state: {}", e))?;
+    let mut state = scripting_state
+        .lock()
+        .map_err(|e| format!("Failed to lock scripting state: {}", e))?;
 
     state.scripts.insert(script_id.clone(), script.clone());
 
-    info!("Script created successfully: {} ({})", script.name, script_id);
+    info!(
+        "Script created successfully: {} ({})",
+        script.name, script_id
+    );
     Ok(script)
 }
 
@@ -300,7 +304,9 @@ pub async fn update_script(
     info!("Updating script: {}", request.script_id);
 
     let scripting_state = app.state::<std::sync::Mutex<ScriptingState>>();
-    let mut state = scripting_state.lock().map_err(|e| format!("Failed to lock scripting state: {}", e))?;
+    let mut state = scripting_state
+        .lock()
+        .map_err(|e| format!("Failed to lock scripting state: {}", e))?;
 
     let mut script = match state.scripts.get(&request.script_id).cloned() {
         Some(script) => script,
@@ -320,7 +326,10 @@ pub async fn update_script(
         // Validate syntax before updating
         let validation_result = validate_script_syntax(&content, &script.language)?;
         if !validation_result.is_valid {
-            return Err(format!("Script syntax validation failed: {:?}", validation_result.errors));
+            return Err(format!(
+                "Script syntax validation failed: {:?}",
+                validation_result.errors
+            ));
         }
         script.content = content;
     }
@@ -337,7 +346,9 @@ pub async fn update_script(
     script.modified_at = chrono::Utc::now().to_rfc3339();
 
     // Update script in storage
-    state.scripts.insert(request.script_id.clone(), script.clone());
+    state
+        .scripts
+        .insert(request.script_id.clone(), script.clone());
 
     info!("Script updated successfully: {}", script.name);
     Ok(script)
@@ -345,20 +356,19 @@ pub async fn update_script(
 
 /// Delete a script
 #[command]
-pub async fn delete_script(
-    script_id: String,
-    app: AppHandle,
-) -> Result<bool, String> {
+pub async fn delete_script(script_id: String, app: AppHandle) -> Result<bool, String> {
     info!("Deleting script: {}", script_id);
 
     let scripting_state = app.state::<std::sync::Mutex<ScriptingState>>();
-    let mut state = scripting_state.lock().map_err(|e| format!("Failed to lock scripting state: {}", e))?;
+    let mut state = scripting_state
+        .lock()
+        .map_err(|e| format!("Failed to lock scripting state: {}", e))?;
 
     match state.scripts.remove(&script_id) {
         Some(script) => {
             info!("Script deleted successfully: {}", script.name);
             Ok(true)
-        },
+        }
         None => {
             warn!("Script with ID '{}' not found for deletion", script_id);
             Ok(false)
@@ -372,7 +382,9 @@ pub async fn get_scripts(app: AppHandle) -> Result<ScriptListResponse, String> {
     info!("Getting all scripts");
 
     let scripting_state = app.state::<std::sync::Mutex<ScriptingState>>();
-    let state = scripting_state.lock().map_err(|e| format!("Failed to lock scripting state: {}", e))?;
+    let state = scripting_state
+        .lock()
+        .map_err(|e| format!("Failed to lock scripting state: {}", e))?;
 
     let scripts: Vec<ScriptDefinition> = state.scripts.values().cloned().collect();
 
@@ -392,7 +404,9 @@ pub async fn get_script(
     info!("Getting script: {}", script_id);
 
     let scripting_state = app.state::<std::sync::Mutex<ScriptingState>>();
-    let state = scripting_state.lock().map_err(|e| format!("Failed to lock scripting state: {}", e))?;
+    let state = scripting_state
+        .lock()
+        .map_err(|e| format!("Failed to lock scripting state: {}", e))?;
 
     Ok(state.scripts.get(&script_id).cloned())
 }
@@ -429,18 +443,16 @@ virtual_devices::start_webcam_streaming(video_path);
 
 print("Video streaming started: " + video_path);"#
                 .to_string(),
-            parameters: vec![
-                ScriptParameter {
-                    name: "video_path".to_string(),
-                    description: "Path to video file".to_string(),
-                    parameter_type: ScriptParameterType::File,
-                    default_value: None,
-                    required: true,
-                    min_value: None,
-                    max_value: None,
-                    options: None,
-                },
-            ],
+            parameters: vec![ScriptParameter {
+                name: "video_path".to_string(),
+                description: "Path to video file".to_string(),
+                parameter_type: ScriptParameterType::File,
+                default_value: None,
+                required: true,
+                min_value: None,
+                max_value: None,
+                options: None,
+            }],
         },
         ScriptTemplate {
             id: "start_recording".to_string(),
@@ -520,23 +532,21 @@ match action {
         print("Unknown action: " + action);
     }
 }"#
-                .to_string(),
-            parameters: vec![
-                ScriptParameter {
-                    name: "action".to_string(),
-                    description: "Action to perform".to_string(),
-                    parameter_type: ScriptParameterType::String,
-                    default_value: Some(serde_json::json!("status")),
-                    required: false,
-                    min_value: None,
-                    max_value: None,
-                    options: Some(vec![
-                        "status".to_string(),
-                        "start_all".to_string(),
-                        "stop_all".to_string(),
-                    ]),
-                },
-            ],
+            .to_string(),
+            parameters: vec![ScriptParameter {
+                name: "action".to_string(),
+                description: "Action to perform".to_string(),
+                parameter_type: ScriptParameterType::String,
+                default_value: Some(serde_json::json!("status")),
+                required: false,
+                min_value: None,
+                max_value: None,
+                options: Some(vec![
+                    "status".to_string(),
+                    "start_all".to_string(),
+                    "stop_all".to_string(),
+                ]),
+            }],
         },
     ];
 
@@ -556,7 +566,10 @@ fn generate_script_id(name: &str) -> String {
 }
 
 /// Validate script syntax
-fn validate_script_syntax(content: &str, language: &ScriptLanguage) -> Result<ScriptValidationResult> {
+fn validate_script_syntax(
+    content: &str,
+    language: &ScriptLanguage,
+) -> Result<ScriptValidationResult> {
     match language {
         ScriptLanguage::Rhai => {
             let engine = rhai::Engine::new();
@@ -575,7 +588,7 @@ fn validate_script_syntax(content: &str, language: &ScriptLanguage) -> Result<Sc
                     syntax_highlight: None,
                 }),
             }
-        },
+        }
         _ => Ok(ScriptValidationResult {
             is_valid: true,
             errors: vec![],
@@ -604,14 +617,18 @@ fn execute_rhai_script(
     }
 
     // Add built-in functions and variables
-    scope.push("print", rhai::Dynamic::from_fn(move |args: rhai::NativeCallArgs| {
-        let message = args.iter()
-            .map(|arg| arg.to_string())
-            .collect::<Vec<_>>()
-            .join(" ");
-        info!("Script output: {}", message);
-        rhai::Dynamic::from(())
-    }));
+    scope.push(
+        "print",
+        rhai::Dynamic::from_fn(move |args: rhai::NativeCallArgs| {
+            let message = args
+                .iter()
+                .map(|arg| arg.to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            info!("Script output: {}", message);
+            rhai::Dynamic::from(())
+        }),
+    );
 
     match engine.eval_with_scope::<rhai::Dynamic>(&mut scope, &script.content) {
         Ok(result) => {
@@ -620,7 +637,10 @@ fn execute_rhai_script(
             // Extract variables from scope
             let mut variables = HashMap::new();
             for (name, value) in scope.iter() {
-                variables.insert(name.clone(), serde_json::to_value(&value).unwrap_or_default());
+                variables.insert(
+                    name.clone(),
+                    serde_json::to_value(&value).unwrap_or_default(),
+                );
             }
 
             ScriptExecutionResult {
@@ -632,7 +652,7 @@ fn execute_rhai_script(
                 variables,
                 logs: vec![],
             }
-        },
+        }
         Err(e) => {
             let execution_time = start_time.elapsed().as_millis() as u64;
 
@@ -689,9 +709,7 @@ fn register_scripting_functions(engine: &mut rhai::Engine) {
         std::thread::sleep(std::time::Duration::from_secs(seconds as u64));
     });
 
-    engine.register_fn("timestamp", || {
-        chrono::Utc::now().timestamp()
-    });
+    engine.register_fn("timestamp", || chrono::Utc::now().timestamp());
 }
 
 /// Initialize scripting system

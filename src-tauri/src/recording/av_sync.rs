@@ -4,10 +4,10 @@
 //! ensuring proper timestamp alignment and maintaining audio-video sync
 //! throughout the recording process.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
-use tracing::{debug, warn, error};
+use tracing::{debug, error, warn};
 
 use crate::audio::{AudioFrameData, AudioSampleFormat};
 use crate::recording::combined_recorder::{AVFrame, VideoFrameData};
@@ -150,8 +150,15 @@ impl AVSynchronizer {
     }
 
     /// Synchronize a video frame
-    fn synchronize_video_frame(&mut self, mut av_frame: AVFrame, base_timestamp: Instant) -> Result<AVFrame> {
-        let video_frame = av_frame.video_frame.take().ok_or_else(|| anyhow!("No video frame in AV frame"))?;
+    fn synchronize_video_frame(
+        &mut self,
+        mut av_frame: AVFrame,
+        base_timestamp: Instant,
+    ) -> Result<AVFrame> {
+        let video_frame = av_frame
+            .video_frame
+            .take()
+            .ok_or_else(|| anyhow!("No video frame in AV frame"))?;
 
         // Adjust timestamp relative to base
         let adjusted_timestamp = if video_frame.timestamp > Duration::ZERO {
@@ -162,18 +169,15 @@ impl AVSynchronizer {
 
         // Apply drift compensation
         let compensated_timestamp = Duration::from_secs_f64(
-            adjusted_timestamp.as_secs_f64() * self.video_drift_compensation as f64
+            adjusted_timestamp.as_secs_f64() * self.video_drift_compensation as f64,
         );
 
         // Update current video timestamp
         self.current_video_timestamp = compensated_timestamp;
 
         // Create synchronized frame
-        let sync_frame = SynchronizedFrame::new(
-            video_frame,
-            adjusted_timestamp,
-            self.video_frames_processed,
-        );
+        let sync_frame =
+            SynchronizedFrame::new(video_frame, adjusted_timestamp, self.video_frames_processed);
 
         // Add to buffer
         self.video_buffer.push_back(sync_frame);
@@ -200,8 +204,15 @@ impl AVSynchronizer {
     }
 
     /// Synchronize an audio frame
-    fn synchronize_audio_frame(&mut self, mut av_frame: AVFrame, base_timestamp: Instant) -> Result<AVFrame> {
-        let audio_frame = av_frame.audio_frame.take().ok_or_else(|| anyhow!("No audio frame in AV frame"))?;
+    fn synchronize_audio_frame(
+        &mut self,
+        mut av_frame: AVFrame,
+        base_timestamp: Instant,
+    ) -> Result<AVFrame> {
+        let audio_frame = av_frame
+            .audio_frame
+            .take()
+            .ok_or_else(|| anyhow!("No audio frame in AV frame"))?;
 
         // Adjust timestamp relative to base
         let adjusted_timestamp = if audio_frame.timestamp > Duration::ZERO {
@@ -212,18 +223,15 @@ impl AVSynchronizer {
 
         // Apply drift compensation
         let compensated_timestamp = Duration::from_secs_f64(
-            adjusted_timestamp.as_secs_f64() * self.audio_drift_compensation as f64
+            adjusted_timestamp.as_secs_f64() * self.audio_drift_compensation as f64,
         );
 
         // Update current audio timestamp
         self.current_audio_timestamp = compensated_timestamp;
 
         // Create synchronized frame
-        let sync_frame = SynchronizedFrame::new(
-            audio_frame,
-            adjusted_timestamp,
-            self.audio_frames_processed,
-        );
+        let sync_frame =
+            SynchronizedFrame::new(audio_frame, adjusted_timestamp, self.audio_frames_processed);
 
         // Add to buffer
         self.audio_buffer.push_back(sync_frame);
@@ -278,7 +286,8 @@ impl AVSynchronizer {
 
         // Remove the selected frame from buffer
         if let Some(ref frame) = best_frame {
-            self.video_buffer.retain(|f| f.sequence_number != frame.sequence_number);
+            self.video_buffer
+                .retain(|f| f.sequence_number != frame.sequence_number);
         }
 
         best_frame
@@ -313,7 +322,8 @@ impl AVSynchronizer {
 
         // Remove the selected frame from buffer
         if let Some(ref frame) = best_frame {
-            self.audio_buffer.retain(|f| f.sequence_number != frame.sequence_number);
+            self.audio_buffer
+                .retain(|f| f.sequence_number != frame.sequence_number);
         }
 
         best_frame
@@ -343,11 +353,17 @@ impl AVSynchronizer {
                 if video_time > audio_time {
                     // Video is ahead, slow it down slightly
                     self.video_drift_compensation = (1.0 / adjustment_factor).max(0.95);
-                    debug!("Adjusting video drift compensation to {:.4}", self.video_drift_compensation);
+                    debug!(
+                        "Adjusting video drift compensation to {:.4}",
+                        self.video_drift_compensation
+                    );
                 } else {
                     // Audio is ahead, slow it down slightly
                     self.audio_drift_compensation = (1.0 / adjustment_factor).max(0.95);
-                    debug!("Adjusting audio drift compensation to {:.4}", self.audio_drift_compensation);
+                    debug!(
+                        "Adjusting audio drift compensation to {:.4}",
+                        self.audio_drift_compensation
+                    );
                 }
             } else {
                 // Within tolerance, gradually return to normal
@@ -426,19 +442,25 @@ impl AVSynchronizer {
         let stats = self.get_statistics();
 
         // Factors affecting sync quality
-        let buffer_health = 1.0 - ((stats.video_buffer_size + stats.audio_buffer_size) as f32 / (self.max_buffer_size as f32 * 2.0));
-        let time_diff_factor = 1.0 - (stats.avg_video_audio_diff.as_secs_f32() / self.sync_tolerance.as_secs_f32());
-        let drift_factor = 1.0 - (stats.audio_drift_percent.abs() + stats.video_drift_percent.abs()) / 200.0;
-        let dropout_factor = if stats.video_frames_processed > 0 && stats.audio_frames_processed > 0 {
-            1.0 - ((stats.video_frames_dropped + stats.audio_frames_dropped) as f32 /
-                   (stats.video_frames_processed + stats.audio_frames_processed) as f32)
+        let buffer_health = 1.0
+            - ((stats.video_buffer_size + stats.audio_buffer_size) as f32
+                / (self.max_buffer_size as f32 * 2.0));
+        let time_diff_factor =
+            1.0 - (stats.avg_video_audio_diff.as_secs_f32() / self.sync_tolerance.as_secs_f32());
+        let drift_factor =
+            1.0 - (stats.audio_drift_percent.abs() + stats.video_drift_percent.abs()) / 200.0;
+        let dropout_factor = if stats.video_frames_processed > 0 && stats.audio_frames_processed > 0
+        {
+            1.0 - ((stats.video_frames_dropped + stats.audio_frames_dropped) as f32
+                / (stats.video_frames_processed + stats.audio_frames_processed) as f32)
         } else {
             1.0
         };
 
         // Combine factors (weighted average)
         (buffer_health * 0.3 + time_diff_factor * 0.3 + drift_factor * 0.2 + dropout_factor * 0.2)
-            .max(0.0).min(1.0)
+            .max(0.0)
+            .min(1.0)
     }
 }
 
@@ -450,8 +472,8 @@ impl Default for AVSynchronizer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::combined_recorder::utils::*;
+    use super::*;
     use std::time::Duration;
 
     #[test]

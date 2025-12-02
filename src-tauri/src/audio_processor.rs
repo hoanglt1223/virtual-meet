@@ -3,13 +3,13 @@
 //! Real-time audio processing with volume control, mute functionality,
 //! audio effects, and format conversion
 
-use anyhow::{Result, anyhow};
-use std::sync::Arc;
+use anyhow::{anyhow, Result};
 use std::sync::atomic::{AtomicBool, AtomicF32, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{info, error, warn, debug};
+use tracing::{debug, error, info, warn};
 
-use crate::audio::{AudioFrameData, AudioConfig, AudioSampleFormat, AudioConverter};
+use crate::audio::{AudioConfig, AudioConverter, AudioFrameData, AudioSampleFormat};
 
 /// Audio processor for real-time audio manipulation
 pub struct AudioProcessor {
@@ -120,7 +120,10 @@ impl AudioProcessor {
                 }
             }
             _ => {
-                return Err(anyhow!("Volume control not implemented for format: {:?}", frame.sample_format));
+                return Err(anyhow!(
+                    "Volume control not implemented for format: {:?}",
+                    frame.sample_format
+                ));
             }
         }
 
@@ -229,22 +232,18 @@ impl AudioVisualizer {
         }
 
         match frame.sample_format {
-            AudioSampleFormat::F32 => {
-                self.analyze_f32_frame(frame)
-            }
-            AudioSampleFormat::I16 => {
-                self.analyze_i16_frame(frame)
-            }
-            _ => Err(anyhow!("Visualization not supported for format: {:?}", frame.sample_format)),
+            AudioSampleFormat::F32 => self.analyze_f32_frame(frame),
+            AudioSampleFormat::I16 => self.analyze_i16_frame(frame),
+            _ => Err(anyhow!(
+                "Visualization not supported for format: {:?}",
+                frame.sample_format
+            )),
         }
     }
 
     fn analyze_f32_frame(&mut self, frame: &AudioFrameData) -> Result<AudioVisualizationData> {
         let samples: &[f32] = unsafe {
-            std::slice::from_raw_parts(
-                frame.data.as_ptr() as *const f32,
-                frame.data.len() / 4,
-            )
+            std::slice::from_raw_parts(frame.data.as_ptr() as *const f32, frame.data.len() / 4)
         };
 
         let samples_per_channel = samples.len() / self.channel_count;
@@ -287,10 +286,7 @@ impl AudioVisualizer {
 
     fn analyze_i16_frame(&mut self, frame: &AudioFrameData) -> Result<AudioVisualizationData> {
         let samples: &[i16] = unsafe {
-            std::slice::from_raw_parts(
-                frame.data.as_ptr() as *const i16,
-                frame.data.len() / 2,
-            )
+            std::slice::from_raw_parts(frame.data.as_ptr() as *const i16, frame.data.len() / 2)
         };
 
         let samples_per_channel = samples.len() / self.channel_count;
@@ -364,7 +360,7 @@ pub struct AudioVisualizationData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audio::{AudioSampleFormat, AudioConfig};
+    use crate::audio::{AudioConfig, AudioSampleFormat};
 
     #[test]
     fn test_audio_processor_creation() {

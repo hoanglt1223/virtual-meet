@@ -3,29 +3,28 @@
 //! This module provides native Rust implementation of a virtual microphone
 //! without requiring external applications like VB-CABLE or VoiceMeeter.
 
-use anyhow::{Result, anyhow};
-use std::sync::{Arc, Mutex as StdMutex};
+use anyhow::{anyhow, Result};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{Device, Host, SampleFormat, Stream, StreamConfig};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex as StdMutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
-use tracing::{info, error, warn, debug};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Device, Host, StreamConfig, SampleFormat, Stream};
+use tracing::{debug, error, info, warn};
 
 // Import audio processing modules
-use crate::audio::{AudioFrameData, AudioBuffer, AudioConfig, AudioSampleFormat, AudioValidator};
+use crate::audio::{AudioBuffer, AudioConfig, AudioFrameData, AudioSampleFormat, AudioValidator};
 use crate::audio_decoder::AudioDecoder;
-use crate::audio_processor::{AudioProcessor, AudioProcessorStats, AudioVisualizer, AudioVisualizationData};
+use crate::audio_processor::{
+    AudioProcessor, AudioProcessorStats, AudioVisualizationData, AudioVisualizer,
+};
 
 // Windows API imports
 use windows::{
     core::*,
     Win32::{
-        Media::Audio::*,
-        Media::KernelStreaming::*,
-        System::Com::*,
-        System::Ole::*,
+        Media::Audio::*, Media::KernelStreaming::*, System::Com::*, System::Ole::*,
         System::Threading::*,
     },
 };
@@ -68,8 +67,9 @@ impl WasapiVirtualMicrophone {
 
         // Create device enumerator
         unsafe {
-            let enumerator: IMMDeviceEnumerator = CoCreateInstance(&CLSID_MMDeviceEnumerator, None, CLSCTX_ALL)
-                .map_err(|e| anyhow!("Failed to create device enumerator: {}", e))?;
+            let enumerator: IMMDeviceEnumerator =
+                CoCreateInstance(&CLSID_MMDeviceEnumerator, None, CLSCTX_ALL)
+                    .map_err(|e| anyhow!("Failed to create device enumerator: {}", e))?;
 
             self.device_enumerator = Some(enumerator);
         }
@@ -100,7 +100,8 @@ impl WasapiVirtualMicrophone {
         // For demonstration, we'll use the default output device as a loopback
         unsafe {
             if let Some(enumerator) = &self.device_enumerator {
-                let default_device = enumerator.GetDefaultAudioEndpoint(eRender, eConsole)
+                let default_device = enumerator
+                    .GetDefaultAudioEndpoint(eRender, eConsole)
                     .map_err(|e| anyhow!("Failed to get default audio endpoint: {}", e))?;
 
                 self.device = Some(default_device);
@@ -116,20 +117,18 @@ impl WasapiVirtualMicrophone {
 
         if let Some(device) = &self.device {
             unsafe {
-                let audio_client: IAudioClient = device.Activate(
-                    CLSID_AudioClient,
-                    CLSCTX_ALL,
-                    None,
-                ).map_err(|e| anyhow!("Failed to activate audio client: {}", e))?;
+                let audio_client: IAudioClient = device
+                    .Activate(CLSID_AudioClient, CLSCTX_ALL, None)
+                    .map_err(|e| anyhow!("Failed to activate audio client: {}", e))?;
 
                 // Set up audio format
                 let wave_format = WAVEFORMATEX {
                     wFormatTag: WAVE_FORMAT_EXTENSIBLE as u16,
                     nChannels: self.audio_config.output_channels as u16,
                     nSamplesPerSec: self.audio_config.output_sample_rate,
-                    nAvgBytesPerSec: (self.audio_config.output_sample_rate *
-                                    self.audio_config.output_channels as u32 *
-                                    4) as u32, // 32-bit samples
+                    nAvgBytesPerSec: (self.audio_config.output_sample_rate
+                        * self.audio_config.output_channels as u32
+                        * 4) as u32, // 32-bit samples
                     nBlockAlign: (self.audio_config.output_channels as u16 * 4) as u16,
                     wBitsPerSample: 32,
                     cbSize: 22, // Size of WAVEFORMATEXTENSIBLE
@@ -163,7 +162,10 @@ impl WasapiVirtualMicrophone {
             return Err(anyhow!("WASAPI virtual microphone not initialized"));
         }
 
-        debug!("Sending {} audio samples to virtual microphone", samples.len());
+        debug!(
+            "Sending {} audio samples to virtual microphone",
+            samples.len()
+        );
 
         // TODO: Implement audio sample delivery to virtual device
         // This would:
@@ -184,7 +186,8 @@ impl WasapiVirtualMicrophone {
 
         if let Some(audio_client) = &self.audio_client {
             unsafe {
-                audio_client.Start()
+                audio_client
+                    .Start()
                     .map_err(|e| anyhow!("Failed to start audio client: {}", e))?;
             }
         }
@@ -198,7 +201,8 @@ impl WasapiVirtualMicrophone {
 
         if let Some(audio_client) = &self.audio_client {
             unsafe {
-                audio_client.Stop()
+                audio_client
+                    .Stop()
                     .map_err(|e| anyhow!("Failed to stop audio client: {}", e))?;
             }
         }
@@ -207,9 +211,16 @@ impl WasapiVirtualMicrophone {
     }
 
     /// Set audio format
-    pub async fn set_format(&mut self, sample_rate: u32, channels: u16, format: AudioSampleFormat) -> Result<()> {
-        info!("Setting virtual microphone format: {} Hz, {} channels, {:?}",
-              sample_rate, channels, format);
+    pub async fn set_format(
+        &mut self,
+        sample_rate: u32,
+        channels: u16,
+        format: AudioSampleFormat,
+    ) -> Result<()> {
+        info!(
+            "Setting virtual microphone format: {} Hz, {} channels, {:?}",
+            sample_rate, channels, format
+        );
 
         self.audio_config.output_sample_rate = sample_rate;
         self.audio_config.output_channels = channels as u32;
@@ -341,8 +352,12 @@ impl VirtualMicrophone {
             audio_processor: Arc::new(Mutex::new(audio_processor)),
             audio_buffer: Arc::new(StdMutex::new(audio_buffer)),
             audio_visualizer: Arc::new(Mutex::new(audio_visualizer)),
-            wasapi_backend: Arc::new(StdMutex::new(WasapiVirtualMicrophone::new(AudioConfig::default()))),
-            ks_backend: Arc::new(StdMutex::new(KSVirtualMicrophone::new(AudioConfig::default()))),
+            wasapi_backend: Arc::new(StdMutex::new(WasapiVirtualMicrophone::new(
+                AudioConfig::default(),
+            ))),
+            ks_backend: Arc::new(StdMutex::new(KSVirtualMicrophone::new(
+                AudioConfig::default(),
+            ))),
             backend,
             decode_thread_handle: None,
             playback_thread_handle: None,
@@ -352,27 +367,41 @@ impl VirtualMicrophone {
 
     /// Initialize the virtual microphone
     pub async fn initialize(&self) -> Result<()> {
-        info!("Initializing virtual microphone using {:?} backend", self.backend);
+        info!(
+            "Initializing virtual microphone using {:?} backend",
+            self.backend
+        );
 
         // Initialize audio processing pipeline
         let processor = self.audio_processor.lock().await;
-        info!("Audio processor initialized: {} channels, {} Hz, {:?} format",
-              self.audio_config.output_channels,
-              self.audio_config.output_sample_rate,
-              self.audio_config.output_format);
+        info!(
+            "Audio processor initialized: {} channels, {} Hz, {:?} format",
+            self.audio_config.output_channels,
+            self.audio_config.output_sample_rate,
+            self.audio_config.output_format
+        );
 
         match self.backend {
             MicrophoneBackend::WASAPI => {
-                let mut backend = self.wasapi_backend.lock().map_err(|_| anyhow!("Failed to lock WASAPI backend"))?;
+                let mut backend = self
+                    .wasapi_backend
+                    .lock()
+                    .map_err(|_| anyhow!("Failed to lock WASAPI backend"))?;
                 backend.initialize().await?;
-            },
+            }
             MicrophoneBackend::KernelStreaming => {
-                let mut backend = self.ks_backend.lock().map_err(|_| anyhow!("Failed to lock KS backend"))?;
+                let mut backend = self
+                    .ks_backend
+                    .lock()
+                    .map_err(|_| anyhow!("Failed to lock KS backend"))?;
                 backend.initialize().await?;
-            },
+            }
         }
 
-        info!("Virtual microphone initialized successfully with {:?} backend", self.backend);
+        info!(
+            "Virtual microphone initialized successfully with {:?} backend",
+            self.backend
+        );
         Ok(())
     }
 
@@ -404,14 +433,20 @@ impl VirtualMicrophone {
         // Start backend streaming
         match self.backend {
             MicrophoneBackend::WASAPI => {
-                let mut backend = self.wasapi_backend.lock().map_err(|_| anyhow!("Failed to lock WASAPI backend"))?;
+                let mut backend = self
+                    .wasapi_backend
+                    .lock()
+                    .map_err(|_| anyhow!("Failed to lock WASAPI backend"))?;
                 backend.start_streaming().await?;
-            },
+            }
             MicrophoneBackend::KernelStreaming => {
-                let mut backend = self.ks_backend.lock().map_err(|_| anyhow!("Failed to lock KS backend"))?;
+                let mut backend = self
+                    .ks_backend
+                    .lock()
+                    .map_err(|_| anyhow!("Failed to lock KS backend"))?;
                 // KS backend doesn't have start_streaming method yet
                 warn!("KS backend streaming not fully implemented");
-            },
+            }
         }
 
         // Set active state
@@ -432,13 +467,9 @@ impl VirtualMicrophone {
         let handle = thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(async move {
-                if let Err(e) = Self::decode_audio_file(
-                    &audio_path,
-                    decoder,
-                    buffer,
-                    should_stop,
-                    config,
-                ).await {
+                if let Err(e) =
+                    Self::decode_audio_file(&audio_path, decoder, buffer, should_stop, config).await
+                {
                     error!("Audio decoding failed: {}", e);
                 }
             });
@@ -461,7 +492,8 @@ impl VirtualMicrophone {
         // For now, we'll create a simple output stream as a proof of concept
         // In a full implementation, this would interface with a virtual audio device
         let host = cpal::default_host();
-        let device = host.default_output_device()
+        let device = host
+            .default_output_device()
             .ok_or_else(|| anyhow!("No audio output device available"))?;
 
         let config = device.default_output_config()?;
@@ -470,16 +502,37 @@ impl VirtualMicrophone {
 
         let stream = match sample_format {
             SampleFormat::F32 => self.create_virtual_audio_stream::<f32>(
-                &device, &config, processor, buffer, visualizer, should_stop,
-                wasapi_backend, ks_backend, backend_type
+                &device,
+                &config,
+                processor,
+                buffer,
+                visualizer,
+                should_stop,
+                wasapi_backend,
+                ks_backend,
+                backend_type,
             )?,
             SampleFormat::I16 => self.create_virtual_audio_stream::<i16>(
-                &device, &config, processor, buffer, visualizer, should_stop,
-                wasapi_backend, ks_backend, backend_type
+                &device,
+                &config,
+                processor,
+                buffer,
+                visualizer,
+                should_stop,
+                wasapi_backend,
+                ks_backend,
+                backend_type,
             )?,
             SampleFormat::U16 => self.create_virtual_audio_stream::<u16>(
-                &device, &config, processor, buffer, visualizer, should_stop,
-                wasapi_backend, ks_backend, backend_type
+                &device,
+                &config,
+                processor,
+                buffer,
+                visualizer,
+                should_stop,
+                wasapi_backend,
+                ks_backend,
+                backend_type,
             )?,
             _ => return Err(anyhow!("Unsupported sample format: {:?}", sample_format)),
         };
@@ -514,7 +567,9 @@ impl VirtualMicrophone {
                 break;
             }
 
-            let mut buffer_lock = buffer.lock().map_err(|_| anyhow!("Failed to lock audio buffer"))?;
+            let mut buffer_lock = buffer
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock audio buffer"))?;
             buffer_lock.push_frame(frame)?;
         }
 
@@ -607,22 +662,36 @@ impl VirtualMicrophone {
                     match backend_type {
                         MicrophoneBackend::WASAPI => {
                             let mut backend = wasapi_backend.lock().ok()?;
-                            let samples: Vec<f32> = processed_frame.data.chunks_exact(4)
-                                .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                            let samples: Vec<f32> = processed_frame
+                                .data
+                                .chunks_exact(4)
+                                .map(|chunk| {
+                                    f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])
+                                })
                                 .collect();
                             if let Err(e) = backend.send_audio_samples(&samples).await {
-                                error!("Failed to send audio samples to WASAPI virtual microphone: {}", e);
+                                error!(
+                                    "Failed to send audio samples to WASAPI virtual microphone: {}",
+                                    e
+                                );
                             }
-                        },
+                        }
                         MicrophoneBackend::KernelStreaming => {
                             let mut backend = ks_backend.lock().ok()?;
-                            let samples: Vec<f32> = processed_frame.data.chunks_exact(4)
-                                .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                            let samples: Vec<f32> = processed_frame
+                                .data
+                                .chunks_exact(4)
+                                .map(|chunk| {
+                                    f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])
+                                })
                                 .collect();
                             if let Err(e) = backend.send_audio_samples(&samples).await {
-                                error!("Failed to send audio samples to KS virtual microphone: {}", e);
+                                error!(
+                                    "Failed to send audio samples to KS virtual microphone: {}",
+                                    e
+                                );
                             }
-                        },
+                        }
                     }
                     Some(())
                 });
@@ -653,10 +722,7 @@ impl VirtualMicrophone {
 
         // Convert frame data to f32 samples
         let frame_samples: &[f32] = unsafe {
-            std::slice::from_raw_parts(
-                frame.data.as_ptr() as *const f32,
-                frame.data.len() / 4,
-            )
+            std::slice::from_raw_parts(frame.data.as_ptr() as *const f32, frame.data.len() / 4)
         };
 
         // Fill output buffer
@@ -680,13 +746,16 @@ impl VirtualMicrophone {
         // Stop backend streaming
         match self.backend {
             MicrophoneBackend::WASAPI => {
-                let mut backend = self.wasapi_backend.lock().map_err(|_| anyhow!("Failed to lock WASAPI backend"))?;
+                let mut backend = self
+                    .wasapi_backend
+                    .lock()
+                    .map_err(|_| anyhow!("Failed to lock WASAPI backend"))?;
                 backend.stop_streaming().await?;
-            },
+            }
             MicrophoneBackend::KernelStreaming => {
                 // KS backend doesn't have stop_streaming method yet
                 warn!("KS backend streaming not fully implemented");
-            },
+            }
         }
 
         // Signal threads to stop
@@ -801,7 +870,10 @@ impl VirtualMicrophone {
         let host = cpal::default_host();
         if let Ok(cpal_devices) = host.devices() {
             let device_names: Result<Vec<_>> = cpal_devices
-                .map(|d| d.name().map_err(|e| anyhow!("Failed to get device name: {}", e)))
+                .map(|d| {
+                    d.name()
+                        .map_err(|e| anyhow!("Failed to get device name: {}", e))
+                })
                 .collect();
 
             if let Ok(mut names) = device_names {
@@ -824,13 +896,15 @@ impl VirtualMicrophone {
         let mut devices = Vec::new();
 
         // Create device enumerator
-        let enumerator: IMMDeviceEnumerator = match CoCreateInstance(&CLSID_MMDeviceEnumerator, None, CLSCTX_ALL) {
-            Ok(e) => e,
-            Err(_) => return Ok(devices),
-        };
+        let enumerator: IMMDeviceEnumerator =
+            match CoCreateInstance(&CLSID_MMDeviceEnumerator, None, CLSCTX_ALL) {
+                Ok(e) => e,
+                Err(_) => return Ok(devices),
+            };
 
         // Enumerate capture devices
-        if let Ok(capture_collection) = enumerator.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE) {
+        if let Ok(capture_collection) = enumerator.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)
+        {
             let mut count = 0u32;
             let _ = capture_collection.GetCount(&mut count);
 

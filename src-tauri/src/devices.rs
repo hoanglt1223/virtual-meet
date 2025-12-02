@@ -4,19 +4,19 @@
 //! for both audio and video devices, with the ability to distinguish between
 //! physical and virtual devices and detect their capabilities.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
-use tracing::{info, warn, debug, error};
+use tracing::{debug, error, info, warn};
 
 pub mod audio;
-pub mod video;
 pub mod capabilities;
+pub mod video;
 
 use audio::AudioDeviceEnumerator;
-use video::VideoDeviceEnumerator;
 use capabilities::DeviceCapabilityDetector;
+use video::VideoDeviceEnumerator;
 
 /// Device type enumeration
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -36,9 +36,9 @@ pub enum DeviceCategory {
 /// Device origin - distinguishes between physical and virtual devices
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DeviceOrigin {
-    Physical,  // Actual hardware devices
-    Virtual,   // Software-based/virtual devices
-    Unknown,   // Cannot determine origin
+    Physical, // Actual hardware devices
+    Virtual,  // Software-based/virtual devices
+    Unknown,  // Cannot determine origin
 }
 
 impl fmt::Display for DeviceOrigin {
@@ -304,7 +304,10 @@ impl DeviceEnumerator {
             }
         }
 
-        info!("Device enumeration completed. Total devices: {}", result.devices.len());
+        info!(
+            "Device enumeration completed. Total devices: {}",
+            result.devices.len()
+        );
         Ok(result)
     }
 
@@ -330,7 +333,9 @@ impl DeviceEnumerator {
 
     /// Get detailed capabilities for a specific device
     pub async fn get_device_capabilities(&self, device_id: &str) -> Result<DeviceCapabilities> {
-        self.capability_detector.detect_capabilities(device_id).await
+        self.capability_detector
+            .detect_capabilities(device_id)
+            .await
     }
 
     /// Check if a device is virtual
@@ -338,7 +343,8 @@ impl DeviceEnumerator {
         // Check audio devices
         if let Ok(audio_devices) = self.audio_enumerator.enumerate_devices().await {
             if audio_devices.iter().any(|d| d.info.id == device_id) {
-                return Ok(audio_devices.iter()
+                return Ok(audio_devices
+                    .iter()
                     .find(|d| d.info.id == device_id)
                     .map(|d| d.info.is_virtual())
                     .unwrap_or(false));
@@ -348,7 +354,8 @@ impl DeviceEnumerator {
         // Check video devices
         if let Ok(video_devices) = self.video_enumerator.enumerate_devices().await {
             if video_devices.iter().any(|d| d.info.id == device_id) {
-                return Ok(video_devices.iter()
+                return Ok(video_devices
+                    .iter()
                     .find(|d| d.info.id == device_id)
                     .map(|d| d.info.is_virtual())
                     .unwrap_or(false));
@@ -430,14 +437,24 @@ impl DeviceFilter {
 
         // Filter by driver name
         if let Some(ref driver_filter) = self.driver_contains {
-            if !device.info.driver.to_lowercase().contains(&driver_filter.to_lowercase()) {
+            if !device
+                .info
+                .driver
+                .to_lowercase()
+                .contains(&driver_filter.to_lowercase())
+            {
                 return false;
             }
         }
 
         // Filter by name
         if let Some(ref name_filter) = self.name_contains {
-            if !device.info.name.to_lowercase().contains(&name_filter.to_lowercase()) {
+            if !device
+                .info
+                .name
+                .to_lowercase()
+                .contains(&name_filter.to_lowercase())
+            {
                 return false;
             }
         }

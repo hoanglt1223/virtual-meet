@@ -3,15 +3,15 @@
 //! Generates thumbnails for video and image files using FFmpeg and image processing.
 //! Supports multiple thumbnail sizes and formats.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use ffmpeg_next as ffmpeg;
-use image::{DynamicImage, ImageFormat, RgbImage, Rgb};
+use image::{DynamicImage, ImageFormat, Rgb, RgbImage};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tracing::{info, error, debug, warn};
 use tempfile::NamedTempFile;
+use tracing::{debug, error, info, warn};
 
-use crate::metadata_extractor::{MetadataExtractor, MediaAnalysis};
+use crate::metadata_extractor::{MediaAnalysis, MetadataExtractor};
 
 /// Thumbnail configuration
 #[derive(Debug, Clone)]
@@ -92,15 +92,24 @@ impl ThumbnailGenerator {
     }
 
     /// Generate thumbnail for video file
-    pub async fn generate_video_thumbnail(&mut self, video_path: &Path, output_dir: &Path) -> Result<ThumbnailResult> {
+    pub async fn generate_video_thumbnail(
+        &mut self,
+        video_path: &Path,
+        output_dir: &Path,
+    ) -> Result<ThumbnailResult> {
         info!("Generating video thumbnail for: {}", video_path.display());
 
         if !video_path.exists() {
-            return Err(anyhow!("Video file does not exist: {}", video_path.display()));
+            return Err(anyhow!(
+                "Video file does not exist: {}",
+                video_path.display()
+            ));
         }
 
         // Analyze video to get metadata and thumbnail position
-        let analysis = self.metadata_extractor.analyze_media_file(video_path)
+        let analysis = self
+            .metadata_extractor
+            .analyze_media_file(video_path)
             .map_err(|e| anyhow!("Failed to analyze video: {}", e))?;
 
         if analysis.video_streams.is_empty() {
@@ -113,17 +122,20 @@ impl ThumbnailGenerator {
         debug!("Extracting thumbnail at {:.2} seconds", thumbnail_time);
 
         // Generate thumbnail using FFmpeg
-        let thumbnail_path = self.generate_ffmpeg_thumbnail(
-            video_path,
-            output_dir,
-            thumbnail_time,
-            &self.config,
-            video_info.width,
-            video_info.height,
-        ).await?;
+        let thumbnail_path = self
+            .generate_ffmpeg_thumbnail(
+                video_path,
+                output_dir,
+                thumbnail_time,
+                &self.config,
+                video_info.width,
+                video_info.height,
+            )
+            .await?;
 
         // Get thumbnail file size
-        let file_size = tokio::fs::metadata(&thumbnail_path).await
+        let file_size = tokio::fs::metadata(&thumbnail_path)
+            .await
             .map_err(|e| anyhow!("Failed to get thumbnail metadata: {}", e))?
             .len();
 
@@ -137,17 +149,23 @@ impl ThumbnailGenerator {
     }
 
     /// Generate thumbnail for image file
-    pub async fn generate_image_thumbnail(&self, image_path: &Path, output_dir: &Path) -> Result<ThumbnailResult> {
+    pub async fn generate_image_thumbnail(
+        &self,
+        image_path: &Path,
+        output_dir: &Path,
+    ) -> Result<ThumbnailResult> {
         info!("Generating image thumbnail for: {}", image_path.display());
 
         if !image_path.exists() {
-            return Err(anyhow!("Image file does not exist: {}", image_path.display()));
+            return Err(anyhow!(
+                "Image file does not exist: {}",
+                image_path.display()
+            ));
         }
 
         // Load image
-        let img = tokio::task::spawn_blocking(move || {
-            image::open(image_path)
-        }).await
+        let img = tokio::task::spawn_blocking(move || image::open(image_path))
+            .await
             .map_err(|e| anyhow!("Failed to load image: {}", e))?
             .map_err(|e| anyhow!("Failed to open image: {}", e))?;
 
@@ -160,11 +178,13 @@ impl ThumbnailGenerator {
 
         tokio::task::spawn_blocking(move || {
             self.save_thumbnail(&thumbnail_img, &thumbnail_path, &self.config)
-        }).await
-            .map_err(|e| anyhow!("Failed to save thumbnail: {}", e))??;
+        })
+        .await
+        .map_err(|e| anyhow!("Failed to save thumbnail: {}", e))??;
 
         // Get thumbnail file size
-        let file_size = tokio::fs::metadata(&thumbnail_path).await
+        let file_size = tokio::fs::metadata(&thumbnail_path)
+            .await
             .map_err(|e| anyhow!("Failed to get thumbnail metadata: {}", e))?
             .len();
 
@@ -200,8 +220,9 @@ impl ThumbnailGenerator {
                 video_width,
                 video_height,
             )
-        }).await
-            .map_err(|e| anyhow!("Thumbnail generation task failed: {}", e))?
+        })
+        .await
+        .map_err(|e| anyhow!("Thumbnail generation task failed: {}", e))?
     }
 
     /// Generate thumbnail using FFmpeg (sync implementation)
@@ -265,13 +286,22 @@ impl ThumbnailGenerator {
             Self::calculate_dimensions(original_width, original_height, config.width, config.height)
         } else {
             (config.width, config.height)
-        }
+        };
 
-        img.resize(target_width, target_height, image::imageops::FilterType::Lanczos3)
+        img.resize(
+            target_width,
+            target_height,
+            image::imageops::FilterType::Lanczos3,
+        )
     }
 
     /// Calculate target dimensions maintaining aspect ratio
-    fn calculate_dimensions(original_width: u32, original_height: u32, max_width: u32, max_height: u32) -> (u32, u32) {
+    fn calculate_dimensions(
+        original_width: u32,
+        original_height: u32,
+        max_width: u32,
+        max_height: u32,
+    ) -> (u32, u32) {
         if original_width == 0 || original_height == 0 {
             return (max_width, max_height);
         }
@@ -288,7 +318,12 @@ impl ThumbnailGenerator {
     }
 
     /// Save thumbnail to file
-    fn save_thumbnail(&self, img: &DynamicImage, path: &Path, config: &ThumbnailConfig) -> Result<()> {
+    fn save_thumbnail(
+        &self,
+        img: &DynamicImage,
+        path: &Path,
+        config: &ThumbnailConfig,
+    ) -> Result<()> {
         match config.format {
             ThumbnailFormat::JPEG => {
                 img.save_with_quality(path, image::JPEG(config.quality))
@@ -338,7 +373,9 @@ impl ThumbnailGenerator {
 
             let mut generator = ThumbnailGenerator::new(config);
 
-            let result = generator.generate_video_thumbnail(video_path, output_dir).await?;
+            let result = generator
+                .generate_video_thumbnail(video_path, output_dir)
+                .await?;
             results.push(result);
         }
 
@@ -346,16 +383,25 @@ impl ThumbnailGenerator {
     }
 
     /// Generate thumbnail for audio file (album art or waveform)
-    pub async fn generate_audio_thumbnail(&self, audio_path: &Path, output_dir: &Path) -> Result<ThumbnailResult> {
+    pub async fn generate_audio_thumbnail(
+        &self,
+        audio_path: &Path,
+        output_dir: &Path,
+    ) -> Result<ThumbnailResult> {
         info!("Generating audio thumbnail for: {}", audio_path.display());
 
         // For now, generate a simple waveform visualization
         // In a full implementation, you would extract album art or generate waveforms
-        self.generate_waveform_thumbnail(audio_path, output_dir).await
+        self.generate_waveform_thumbnail(audio_path, output_dir)
+            .await
     }
 
     /// Generate waveform thumbnail for audio
-    async fn generate_waveform_thumbnail(&self, audio_path: &Path, output_dir: &Path) -> Result<ThumbnailResult> {
+    async fn generate_waveform_thumbnail(
+        &self,
+        audio_path: &Path,
+        output_dir: &Path,
+    ) -> Result<ThumbnailResult> {
         // Create a simple placeholder waveform image
         let width = self.config.width;
         let height = self.config.height;
@@ -366,7 +412,9 @@ impl ThumbnailGenerator {
 
             // Generate simple waveform pattern
             for x in 0..width {
-                let amplitude = ((x as f32 / width as f32) * std::f32::consts::PI * 2.0).sin().abs();
+                let amplitude = ((x as f32 / width as f32) * std::f32::consts::PI * 2.0)
+                    .sin()
+                    .abs();
                 let bar_height = (amplitude * height as f32 * 0.8) as u32;
                 let start_y = (height - bar_height) / 2;
 
@@ -376,8 +424,9 @@ impl ThumbnailGenerator {
             }
 
             DynamicImage::ImageRgb8(img)
-        }).await
-            .map_err(|e| anyhow!("Failed to generate waveform: {}", e))?;
+        })
+        .await
+        .map_err(|e| anyhow!("Failed to generate waveform: {}", e))?;
 
         // Save thumbnail
         let filename = self.generate_thumbnail_filename(audio_path);
@@ -385,11 +434,13 @@ impl ThumbnailGenerator {
 
         tokio::task::spawn_blocking(move || {
             self.save_thumbnail(&img, &thumbnail_path, &self.config)
-        }).await
-            .map_err(|e| anyhow!("Failed to save audio thumbnail: {}", e))??;
+        })
+        .await
+        .map_err(|e| anyhow!("Failed to save audio thumbnail: {}", e))??;
 
         // Get thumbnail file size
-        let file_size = tokio::fs::metadata(&thumbnail_path).await
+        let file_size = tokio::fs::metadata(&thumbnail_path)
+            .await
             .map_err(|e| anyhow!("Failed to get thumbnail metadata: {}", e))?
             .len();
 
@@ -450,7 +501,11 @@ impl ThumbnailGenerator {
     }
 
     /// Clean up old thumbnails
-    pub async fn cleanup_old_thumbnails(&self, output_dir: &Path, max_age_days: u64) -> Result<usize> {
+    pub async fn cleanup_old_thumbnails(
+        &self,
+        output_dir: &Path,
+        max_age_days: u64,
+    ) -> Result<usize> {
         let mut removed_count = 0;
 
         if let Ok(mut entries) = tokio::fs::read_dir(output_dir).await {
@@ -466,7 +521,11 @@ impl ThumbnailGenerator {
                                 if let Ok(elapsed) = modified.elapsed() {
                                     if elapsed.as_secs() > max_age_days * 24 * 60 * 60 {
                                         if let Err(e) = tokio::fs::remove_file(&path).await {
-                                            warn!("Failed to remove old thumbnail {}: {}", path.display(), e);
+                                            warn!(
+                                                "Failed to remove old thumbnail {}: {}",
+                                                path.display(),
+                                                e
+                                            );
                                         } else {
                                             debug!("Removed old thumbnail: {}", path.display());
                                             removed_count += 1;
@@ -543,12 +602,33 @@ mod tests {
     fn test_media_type_detection() {
         let generator = ThumbnailGenerator::new_default();
 
-        assert_eq!(generator.detect_media_type(Path::new("test.mp4")), MediaType::Video);
-        assert_eq!(generator.detect_media_type(Path::new("test.avi")), MediaType::Video);
-        assert_eq!(generator.detect_media_type(Path::new("test.mp3")), MediaType::Audio);
-        assert_eq!(generator.detect_media_type(Path::new("test.wav")), MediaType::Audio);
-        assert_eq!(generator.detect_media_type(Path::new("test.jpg")), MediaType::Image);
-        assert_eq!(generator.detect_media_type(Path::new("test.png")), MediaType::Image);
-        assert_eq!(generator.detect_media_type(Path::new("test.xyz")), MediaType::Unknown);
+        assert_eq!(
+            generator.detect_media_type(Path::new("test.mp4")),
+            MediaType::Video
+        );
+        assert_eq!(
+            generator.detect_media_type(Path::new("test.avi")),
+            MediaType::Video
+        );
+        assert_eq!(
+            generator.detect_media_type(Path::new("test.mp3")),
+            MediaType::Audio
+        );
+        assert_eq!(
+            generator.detect_media_type(Path::new("test.wav")),
+            MediaType::Audio
+        );
+        assert_eq!(
+            generator.detect_media_type(Path::new("test.jpg")),
+            MediaType::Image
+        );
+        assert_eq!(
+            generator.detect_media_type(Path::new("test.png")),
+            MediaType::Image
+        );
+        assert_eq!(
+            generator.detect_media_type(Path::new("test.xyz")),
+            MediaType::Unknown
+        );
     }
 }

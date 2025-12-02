@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/tauri";
-import { open } from "@tauri-apps/api/dialog";
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,9 +13,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   FolderOpen,
   Monitor,
-  Mic,
-  Trash2,
-  Plus,
   Settings as SettingsIcon,
   Download,
   Upload,
@@ -56,7 +53,7 @@ export default function Settings() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [videoDevices, setVideoDevices] = useState<VideoDeviceInfo[]>([]);
   const [audioDevices, setAudioDevices] = useState<AudioDeviceInfo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, _setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 

@@ -3,15 +3,15 @@
 //! Advanced metadata extraction for media files using FFmpeg and Symphonia.
 //! Supports detailed video/audio analysis, codec information, and technical metadata.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use ffmpeg_next as ffmpeg;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tracing::{info, error, debug, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::audio::AudioMetadata;
+use crate::commands_media::{FormatInfo, MediaMetadata, MediaType};
 use crate::virtual_device::VideoInfo;
-use crate::commands_media::{MediaMetadata, FormatInfo, MediaType};
 
 /// Enhanced metadata extractor
 pub struct MetadataExtractor {
@@ -83,9 +83,7 @@ pub struct Chapter {
 impl MetadataExtractor {
     /// Create new metadata extractor
     pub fn new() -> Self {
-        Self {
-            initialized: false,
-        }
+        Self { initialized: false }
     }
 
     /// Initialize FFmpeg
@@ -124,7 +122,8 @@ impl MetadataExtractor {
 
         // Extract basic format information
         let format_name = input.format().name().to_string();
-        let duration = input.duration()
+        let duration = input
+            .duration()
             .and_then(|d| d.as_secs_f64().into())
             .unwrap_or(0.0);
         let bit_rate = input.bit_rate().unwrap_or(0);
@@ -173,8 +172,11 @@ impl MetadataExtractor {
             metadata_tags,
         };
 
-        info!("Media analysis completed: {} video streams, {} audio streams",
-              analysis.video_streams.len(), analysis.audio_streams.len());
+        info!(
+            "Media analysis completed: {} video streams, {} audio streams",
+            analysis.video_streams.len(),
+            analysis.audio_streams.len()
+        );
 
         Ok(analysis)
     }
@@ -182,16 +184,25 @@ impl MetadataExtractor {
     /// Analyze video stream
     fn analyze_video_stream(&self, stream: &ffmpeg::Stream) -> Result<VideoMetadata> {
         let parameters = stream.parameters();
-        let video = parameters.as_video()
+        let video = parameters
+            .as_video()
             .ok_or_else(|| anyhow!("Not a video stream"))?;
 
         // Get frame rate
-        let fps = stream.avg_frame_rate()
-            .map(|(num, den)| if den > 0 { num as f64 / den as f64 } else { 0.0 })
+        let fps = stream
+            .avg_frame_rate()
+            .map(|(num, den)| {
+                if den > 0 {
+                    num as f64 / den as f64
+                } else {
+                    0.0
+                }
+            })
             .unwrap_or(0.0);
 
         // Get duration
-        let duration = stream.duration()
+        let duration = stream
+            .duration()
             .and_then(|d| d.as_secs_f64().into())
             .unwrap_or(0.0);
 
@@ -218,11 +229,13 @@ impl MetadataExtractor {
     /// Analyze audio stream
     fn analyze_audio_stream(&self, stream: &ffmpeg::Stream) -> Result<EnhancedAudioMetadata> {
         let parameters = stream.parameters();
-        let audio = parameters.as_audio()
+        let audio = parameters
+            .as_audio()
             .ok_or_else(|| anyhow!("Not an audio stream"))?;
 
         // Get duration
-        let duration = stream.duration()
+        let duration = stream
+            .duration()
             .and_then(|d| d.as_secs_f64().into())
             .unwrap_or(0.0);
 
@@ -246,12 +259,16 @@ impl MetadataExtractor {
             sample_format,
             channel_layout,
             bits_per_sample: Some(audio.bits()), // Simplified
-            language: None, // TODO: Extract from metadata
+            language: None,                      // TODO: Extract from metadata
         })
     }
 
     /// Analyze subtitle stream
-    fn analyze_subtitle_stream(&self, stream: &ffmpeg::Stream, index: usize) -> Result<SubtitleStream> {
+    fn analyze_subtitle_stream(
+        &self,
+        stream: &ffmpeg::Stream,
+        index: usize,
+    ) -> Result<SubtitleStream> {
         let codec = ffmpeg::codec::find(stream.id())
             .map(|c| c.name().to_string())
             .unwrap_or_else(|| "unknown".to_string());
@@ -265,7 +282,10 @@ impl MetadataExtractor {
     }
 
     /// Extract metadata tags
-    fn extract_metadata_tags(&self, input: &ffmpeg::format::context::Input) -> std::collections::HashMap<String, String> {
+    fn extract_metadata_tags(
+        &self,
+        input: &ffmpeg::format::context::Input,
+    ) -> std::collections::HashMap<String, String> {
         let mut tags = std::collections::HashMap::new();
 
         for (key, value) in input.metadata().iter() {
@@ -290,14 +310,17 @@ impl MetadataExtractor {
         let mut chapters = Vec::new();
 
         for chapter in input.chapters() {
-            let start_time = chapter.start()
+            let start_time = chapter
+                .start()
                 .and_then(|t| t.as_secs_f64().into())
                 .unwrap_or(0.0);
-            let end_time = chapter.end()
+            let end_time = chapter
+                .end()
                 .and_then(|t| t.as_secs_f64().into())
                 .unwrap_or(0.0);
 
-            let title = chapter.metadata()
+            let title = chapter
+                .metadata()
                 .and_then(|m| m.get("title"))
                 .map(|t| t.to_string());
 
@@ -351,7 +374,10 @@ impl MetadataExtractor {
     }
 
     /// Extract metadata using audio-specific libraries for better accuracy
-    pub fn extract_audio_metadata_enhanced(&self, file_path: &Path) -> Result<EnhancedAudioMetadata> {
+    pub fn extract_audio_metadata_enhanced(
+        &self,
+        file_path: &Path,
+    ) -> Result<EnhancedAudioMetadata> {
         // For audio-only files, we can use Symphonia for more accurate metadata
         if self.is_audio_file(file_path) {
             return self.extract_symphonia_metadata(file_path);
@@ -407,8 +433,8 @@ impl MetadataExtractor {
     pub fn validate_media_file(&mut self, file_path: &Path) -> Result<bool> {
         match self.analyze_media_file(file_path) {
             Ok(analysis) => {
-                let has_valid_streams = !analysis.video_streams.is_empty() ||
-                                      !analysis.audio_streams.is_empty();
+                let has_valid_streams =
+                    !analysis.video_streams.is_empty() || !analysis.audio_streams.is_empty();
                 let has_duration = analysis.duration > 0.0;
 
                 Ok(has_valid_streams && has_duration)

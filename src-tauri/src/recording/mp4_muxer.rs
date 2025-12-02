@@ -4,16 +4,16 @@
 //! handling both video and audio streams and creating properly formatted
 //! MP4 output files with correct timestamps and metadata.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 
 use crate::audio::AudioFrameData;
 use crate::audio::AudioSampleFormat;
 use crate::recording::combined_recorder::VideoFrameData;
-use crate::recording::config::{RecordingConfig, VideoCodec, AudioCodec, VideoFormat};
+use crate::recording::config::{AudioCodec, RecordingConfig, VideoCodec, VideoFormat};
 
 /// MP4 muxer for creating output files
 pub struct MP4Muxer {
@@ -100,10 +100,19 @@ impl MP4Muxer {
         };
 
         info!("Creating MP4 muxer for: {}", output_path.display());
-        info!("Video: {}x{} @ {:.1}fps, codec: {}",
-              video_width, video_height, video_encoder.frame_rate, video_encoder.codec.name());
-        info!("Audio: {}Hz, {} channels, codec: {}",
-              audio_encoder.sample_rate, audio_encoder.channels, audio_encoder.codec.name());
+        info!(
+            "Video: {}x{} @ {:.1}fps, codec: {}",
+            video_width,
+            video_height,
+            video_encoder.frame_rate,
+            video_encoder.codec.name()
+        );
+        info!(
+            "Audio: {}Hz, {} channels, codec: {}",
+            audio_encoder.sample_rate,
+            audio_encoder.channels,
+            audio_encoder.codec.name()
+        );
 
         let mut muxer = Self {
             output_path,
@@ -143,7 +152,12 @@ impl MP4Muxer {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| anyhow!("Failed to start FFmpeg: {}. Is FFmpeg installed and in PATH?", e))?;
+            .map_err(|e| {
+                anyhow!(
+                    "Failed to start FFmpeg: {}. Is FFmpeg installed and in PATH?",
+                    e
+                )
+            })?;
 
         self.ffmpeg_process = Some(process);
         info!("FFmpeg process started successfully");
@@ -160,7 +174,10 @@ impl MP4Muxer {
         args.push("-pixel_format".to_string());
         args.push(self.video_encoder.pixel_format.name().to_string());
         args.push("-video_size".to_string());
-        args.push(format!("{}x{}", self.video_encoder.width, self.video_encoder.height));
+        args.push(format!(
+            "{}x{}",
+            self.video_encoder.width, self.video_encoder.height
+        ));
         args.push("-framerate".to_string());
         args.push(format!("{:.2}", self.video_encoder.frame_rate));
         args.push("-i".to_string());
@@ -190,7 +207,11 @@ impl MP4Muxer {
         }
 
         args.push("-g".to_string());
-        args.push((self.video_encoder.keyframe_interval.as_secs_f32() * self.video_encoder.frame_rate) as i32 to_string());
+        args.push(
+            ((self.video_encoder.keyframe_interval.as_secs_f32() * self.video_encoder.frame_rate)
+                as i32)
+                .to_string(),
+        );
 
         // Audio encoding options
         args.push("-c:a".to_string());
@@ -240,7 +261,10 @@ impl MP4Muxer {
 
         self.video_frames_written += 1;
 
-        debug!("Wrote video frame {} at {:?}", self.video_frames_written, frame.timestamp);
+        debug!(
+            "Wrote video frame {} at {:?}",
+            self.video_frames_written, frame.timestamp
+        );
         Ok(())
     }
 
@@ -262,7 +286,10 @@ impl MP4Muxer {
         // such as using pipes or temporary files for audio input
         self.audio_frames_written += 1;
 
-        debug!("Wrote audio frame {} at {:?}", self.audio_frames_written, frame.timestamp);
+        debug!(
+            "Wrote audio frame {} at {:?}",
+            self.audio_frames_written, frame.timestamp
+        );
         Ok(())
     }
 
@@ -280,8 +307,11 @@ impl MP4Muxer {
             (VideoFormat::YUY2, VideoFormat::YUV420P) => {
                 self.yuy2_to_yuv420p(&frame.data, frame.width, frame.height)
             }
-            _ => Err(anyhow!("Unsupported video format conversion: {:?} -> {:?}",
-                           frame.format, self.video_encoder.pixel_format)),
+            _ => Err(anyhow!(
+                "Unsupported video format conversion: {:?} -> {:?}",
+                frame.format,
+                self.video_encoder.pixel_format
+            )),
         }
     }
 
@@ -313,9 +343,11 @@ impl MP4Muxer {
                     let u_idx = y_size + uv_size + (y / 2) * (width / 2) + (x / 2);
 
                     // U component
-                    yuv_data[uv_idx] = ((-0.169 * r - 0.331 * g + 0.500 * b + 128.0) as u8).clamp(0, 255);
+                    yuv_data[uv_idx] =
+                        ((-0.169 * r - 0.331 * g + 0.500 * b + 128.0) as u8).clamp(0, 255);
                     // V component
-                    yuv_data[u_idx] = ((0.500 * r - 0.419 * g - 0.081 * b + 128.0) as u8).clamp(0, 255);
+                    yuv_data[u_idx] =
+                        ((0.500 * r - 0.419 * g - 0.081 * b + 128.0) as u8).clamp(0, 255);
                 }
             }
         }
@@ -365,14 +397,13 @@ impl MP4Muxer {
 
         // Simple I16 to F32 conversion
         match (frame.sample_format, self.audio_encoder.sample_format) {
-            (AudioSampleFormat::I16, AudioSampleFormat::F32) => {
-                self.i16_to_f32(&frame.data)
-            }
-            (AudioSampleFormat::F32, AudioSampleFormat::I16) => {
-                self.f32_to_i16(&frame.data)
-            }
-            _ => Err(anyhow!("Unsupported audio format conversion: {:?} -> {:?}",
-                           frame.sample_format, self.audio_encoder.sample_format)),
+            (AudioSampleFormat::I16, AudioSampleFormat::F32) => self.i16_to_f32(&frame.data),
+            (AudioSampleFormat::F32, AudioSampleFormat::I16) => self.f32_to_i16(&frame.data),
+            _ => Err(anyhow!(
+                "Unsupported audio format conversion: {:?} -> {:?}",
+                frame.sample_format,
+                self.audio_encoder.sample_format
+            )),
         }
     }
 
@@ -381,9 +412,8 @@ impl MP4Muxer {
         let samples = i16_data.len() / 2;
         let mut f32_data = Vec::with_capacity(samples * 4);
 
-        let i16_samples: &[i16] = unsafe {
-            std::slice::from_raw_parts(i16_data.as_ptr() as *const i16, samples)
-        };
+        let i16_samples: &[i16] =
+            unsafe { std::slice::from_raw_parts(i16_data.as_ptr() as *const i16, samples) };
 
         for &sample in i16_samples {
             let f32_sample = sample as f32 / 32768.0;
@@ -398,9 +428,8 @@ impl MP4Muxer {
         let samples = f32_data.len() / 4;
         let mut i16_data = Vec::with_capacity(samples * 2);
 
-        let f32_samples: &[f32] = unsafe {
-            std::slice::from_raw_parts(f32_data.as_ptr() as *const f32, samples)
-        };
+        let f32_samples: &[f32] =
+            unsafe { std::slice::from_raw_parts(f32_data.as_ptr() as *const f32, samples) };
 
         for &sample in f32_samples {
             let i16_sample = (sample.clamp(-1.0, 1.0) * 32767.0) as i16;
@@ -416,10 +445,14 @@ impl MP4Muxer {
             video_frames_written: self.video_frames_written,
             audio_frames_written: self.audio_frames_written,
             current_file_size: self.current_file_size,
-            recording_duration: self.last_video_timestamp.saturating_sub(self.timestamp_offset),
+            recording_duration: self
+                .last_video_timestamp
+                .saturating_sub(self.timestamp_offset),
             video_bitrate: self.calculate_current_video_bitrate(),
             audio_bitrate: self.calculate_current_audio_bitrate(),
-            is_ffmpeg_running: self.ffmpeg_process.as_ref().map_or(false, |p| p.try_wait().ok().map_or(true, |status| status.is_none())),
+            is_ffmpeg_running: self.ffmpeg_process.as_ref().map_or(false, |p| {
+                p.try_wait().ok().map_or(true, |status| status.is_none())
+            }),
         }
     }
 
@@ -429,10 +462,13 @@ impl MP4Muxer {
             return 0;
         }
 
-        let duration = self.last_video_timestamp.saturating_sub(self.timestamp_offset);
+        let duration = self
+            .last_video_timestamp
+            .saturating_sub(self.timestamp_offset);
         if duration.as_secs_f64() > 0.0 {
             // Rough estimate based on frame count and resolution
-            let bits_per_frame = (self.video_encoder.width * self.video_encoder.height * 3 * 8) as f64; // RGB24 approximation
+            let bits_per_frame =
+                (self.video_encoder.width * self.video_encoder.height * 3 * 8) as f64; // RGB24 approximation
             (bits_per_frame * self.video_encoder.frame_rate) as u32
         } else {
             0
@@ -481,7 +517,10 @@ impl MP4Muxer {
 
         // Check if output file was created
         if !self.output_path.exists() {
-            return Err(anyhow!("Output file was not created: {}", self.output_path.display()));
+            return Err(anyhow!(
+                "Output file was not created: {}",
+                self.output_path.display()
+            ));
         }
 
         // Get final file size
@@ -536,8 +575,8 @@ impl Drop for MP4Muxer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::combined_recorder::utils::*;
+    use super::*;
     use tempfile::tempdir;
 
     #[test]
@@ -687,7 +726,10 @@ mod tests {
 
         // Test F32 to I16 conversion
         let f32_data = vec![0.5f32, -0.5f32];
-        let f32_bytes = f32_data.iter().flat_map(|&x| x.to_ne_bytes().to_vec()).collect::<Vec<_>>();
+        let f32_bytes = f32_data
+            .iter()
+            .flat_map(|&x| x.to_ne_bytes().to_vec())
+            .collect::<Vec<_>>();
         let i16_data = muxer.f32_to_i16(&f32_bytes).unwrap();
 
         // Should now be 4 bytes (two I16 samples)

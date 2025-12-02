@@ -3,12 +3,12 @@
 //! Provides audio decoding capabilities using Symphonia
 //! Supports MP3, WAV, M4A, AAC, OGG, and FLAC formats
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 use std::time::Duration;
-use tracing::{info, error, warn, debug};
+use tracing::{debug, error, info, warn};
 
 use symphonia::core::audio::{AudioBufferRef, Signal};
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
@@ -18,7 +18,7 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-use crate::audio::{AudioFrameData, AudioMetadata, AudioSampleFormat, AudioBuffer};
+use crate::audio::{AudioBuffer, AudioFrameData, AudioMetadata, AudioSampleFormat};
 
 /// Audio decoder for various audio formats
 pub struct AudioDecoder {
@@ -41,8 +41,7 @@ impl AudioDecoder {
         info!("Opening audio file: {}", path.display());
 
         // Create a file reader
-        let file = File::open(path)
-            .map_err(|e| anyhow!("Failed to open audio file: {}", e))?;
+        let file = File::open(path).map_err(|e| anyhow!("Failed to open audio file: {}", e))?;
 
         // Create a media source stream
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
@@ -64,7 +63,8 @@ impl AudioDecoder {
         let mut format = probed.format;
 
         // Find the first audio track
-        let track = format.tracks()
+        let track = format
+            .tracks()
             .iter()
             .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
             .ok_or_else(|| anyhow!("No audio track found in file"))?;
@@ -74,16 +74,20 @@ impl AudioDecoder {
         // Extract metadata
         self.metadata = self.extract_metadata(track, &format);
 
-        info!("Audio track loaded: {} channels, {} Hz, codec: {}",
-              self.metadata.channels,
-              self.metadata.sample_rate,
-              self.metadata.codec);
+        info!(
+            "Audio track loaded: {} channels, {} Hz, codec: {}",
+            self.metadata.channels, self.metadata.sample_rate, self.metadata.codec
+        );
 
         Ok(())
     }
 
     /// Decode entire audio file into frames
-    pub fn decode_all<P: AsRef<Path>>(&mut self, path: P, buffer_size: usize) -> Result<Vec<AudioFrameData>> {
+    pub fn decode_all<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+        buffer_size: usize,
+    ) -> Result<Vec<AudioFrameData>> {
         let path = path.as_ref();
         info!("Decoding audio file: {}", path.display());
 
@@ -110,7 +114,8 @@ impl AudioDecoder {
         let mut format = probed.format;
 
         // Find the first audio track
-        let track = format.tracks()
+        let track = format
+            .tracks()
             .iter()
             .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
             .ok_or_else(|| anyhow!("No audio track found in file"))?;
@@ -136,7 +141,9 @@ impl AudioDecoder {
                     warn!("Decoder reset required");
                     continue;
                 }
-                Err(SymphoniaError::IoError(ref err)) if err.kind() == std::io::ErrorKind::UnexpectedEof => {
+                Err(SymphoniaError::IoError(ref err))
+                    if err.kind() == std::io::ErrorKind::UnexpectedEof =>
+                {
                     debug!("End of file reached");
                     break;
                 }
@@ -168,7 +175,9 @@ impl AudioDecoder {
                         frames.push(frame);
                     }
                 }
-                Err(SymphoniaError::IoError(ref err)) if err.kind() == std::io::ErrorKind::UnexpectedEof => {
+                Err(SymphoniaError::IoError(ref err))
+                    if err.kind() == std::io::ErrorKind::UnexpectedEof =>
+                {
                     debug!("End of stream");
                     break;
                 }
@@ -272,7 +281,8 @@ impl AudioDecoder {
             std::slice::from_raw_parts(
                 interleaved.as_ptr() as *const u8,
                 interleaved.len() * 4, // 4 bytes per f32
-            ).to_vec()
+            )
+            .to_vec()
         };
 
         let audio_frame = AudioFrameData::new(

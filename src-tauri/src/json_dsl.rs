@@ -3,13 +3,13 @@
 //! This module provides a JSON-based DSL for executing user-defined sequences
 //! with support for video playback, audio control, waiting, and conditional logic.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tracing::{info, error, warn, debug};
-use chrono::{DateTime, Utc};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 /// JSON DSL Script definition
@@ -264,25 +264,15 @@ pub enum ScriptCondition {
         right: ScriptValue,
     },
     /// Logical AND
-    And {
-        conditions: Vec<ScriptCondition>,
-    },
+    And { conditions: Vec<ScriptCondition> },
     /// Logical OR
-    Or {
-        conditions: Vec<ScriptCondition>,
-    },
+    Or { conditions: Vec<ScriptCondition> },
     /// Logical NOT
-    Not {
-        condition: Box<ScriptCondition>,
-    },
+    Not { condition: Box<ScriptCondition> },
     /// Check if variable exists
-    VariableExists {
-        name: String,
-    },
+    VariableExists { name: String },
     /// Check if file exists
-    FileExists {
-        path: String,
-    },
+    FileExists { path: String },
 }
 
 /// Script execution context
@@ -410,27 +400,33 @@ impl JsonDslEngine {
                 if path.is_empty() {
                     return Err(anyhow!("Action {}: video path cannot be empty", index));
                 }
-            },
+            }
             ScriptAction::PlayAudio { path, .. } => {
                 if path.is_empty() {
                     return Err(anyhow!("Action {}: audio path cannot be empty", index));
                 }
-            },
+            }
             ScriptAction::Wait { duration, .. } => {
                 if *duration < 0.0 {
-                    return Err(anyhow!("Action {}: wait duration cannot be negative", index));
+                    return Err(anyhow!(
+                        "Action {}: wait duration cannot be negative",
+                        index
+                    ));
                 }
-            },
+            }
             ScriptAction::StartRecording { output_path, .. } => {
                 if output_path.is_empty() {
-                    return Err(anyhow!("Action {}: recording output path cannot be empty", index));
+                    return Err(anyhow!(
+                        "Action {}: recording output path cannot be empty",
+                        index
+                    ));
                 }
-            },
+            }
             ScriptAction::SetVariable { name, .. } => {
                 if name.is_empty() {
                     return Err(anyhow!("Action {}: variable name cannot be empty", index));
                 }
-            },
+            }
             _ => {} // Other actions are generally valid by structure
         }
 
@@ -438,7 +434,10 @@ impl JsonDslEngine {
     }
 
     /// Execute a JSON DSL script
-    pub async fn execute_script(&mut self, script: &JsonDslScript) -> Result<ScriptExecutionResult> {
+    pub async fn execute_script(
+        &mut self,
+        script: &JsonDslScript,
+    ) -> Result<ScriptExecutionResult> {
         let start_time = std::time::Instant::now();
         let mut execution_log = Vec::new();
         let mut actions_executed = 0u32;
@@ -446,9 +445,15 @@ impl JsonDslEngine {
         // Initialize execution context
         let mut variables = script.variables.clone().unwrap_or_default();
         if let Some(script_id) = &script.id {
-            variables.insert("script_id".to_string(), ScriptValue::String(script_id.clone()));
+            variables.insert(
+                "script_id".to_string(),
+                ScriptValue::String(script_id.clone()),
+            );
         }
-        variables.insert("script_name".to_string(), ScriptValue::String(script.name.clone()));
+        variables.insert(
+            "script_name".to_string(),
+            ScriptValue::String(script.name.clone()),
+        );
 
         let context = ExecutionContext {
             variables,
@@ -488,14 +493,15 @@ impl JsonDslEngine {
                         if let Some(log_message) = result {
                             execution_log.push(log_message);
                         }
-                    },
+                    }
                     Err(e) => {
                         let error_msg = format!("Action {} failed: {}", action_index, e);
                         execution_log.push(error_msg.clone());
                         error!("Script execution error: {}", error_msg);
 
                         if stop_on_error {
-                            self.context.as_mut().unwrap().state = ExecutionState::Failed(e.to_string());
+                            self.context.as_mut().unwrap().state =
+                                ExecutionState::Failed(e.to_string());
                             return Ok(ScriptExecutionResult {
                                 success: false,
                                 error: Some(e.to_string()),
@@ -516,7 +522,10 @@ impl JsonDslEngine {
         }
 
         let execution_time = start_time.elapsed().as_millis() as u64;
-        execution_log.push(format!("Script completed successfully. Executed {} actions in {}ms", actions_executed, execution_time));
+        execution_log.push(format!(
+            "Script completed successfully. Executed {} actions in {}ms",
+            actions_executed, execution_time
+        ));
         info!("JSON DSL script completed successfully");
 
         Ok(ScriptExecutionResult {
@@ -530,13 +539,29 @@ impl JsonDslEngine {
     }
 
     /// Execute a single action
-    async fn execute_action(&mut self, action: &ScriptAction, action_index: usize) -> Result<Option<String>> {
-        let context = self.context.as_mut().ok_or_else(|| anyhow!("No execution context"))?;
+    async fn execute_action(
+        &mut self,
+        action: &ScriptAction,
+        action_index: usize,
+    ) -> Result<Option<String>> {
+        let context = self
+            .context
+            .as_mut()
+            .ok_or_else(|| anyhow!("No execution context"))?;
 
         match action {
-            ScriptAction::PlayVideo { path, start_time, duration, loop_video, device, volume } => {
-                let log_msg = format!("Playing video: {} (start: {:?}, duration: {:?}, loop: {:?})",
-                    path, start_time, duration, loop_video);
+            ScriptAction::PlayVideo {
+                path,
+                start_time,
+                duration,
+                loop_video,
+                device,
+                volume,
+            } => {
+                let log_msg = format!(
+                    "Playing video: {} (start: {:?}, duration: {:?}, loop: {:?})",
+                    path, start_time, duration, loop_video
+                );
                 info!("{}", log_msg);
 
                 // Integration with existing webcam streaming would go here
@@ -546,11 +571,20 @@ impl JsonDslEngine {
                 }
 
                 Ok(Some(log_msg))
-            },
+            }
 
-            ScriptAction::PlayAudio { path, start_time, duration, loop_audio, device, volume } => {
-                let log_msg = format!("Playing audio: {} (start: {:?}, duration: {:?}, loop: {:?})",
-                    path, start_time, duration, loop_audio);
+            ScriptAction::PlayAudio {
+                path,
+                start_time,
+                duration,
+                loop_audio,
+                device,
+                volume,
+            } => {
+                let log_msg = format!(
+                    "Playing audio: {} (start: {:?}, duration: {:?}, loop: {:?})",
+                    path, start_time, duration, loop_audio
+                );
                 info!("{}", log_msg);
 
                 if let Some(volume) = volume {
@@ -558,15 +592,18 @@ impl JsonDslEngine {
                 }
 
                 Ok(Some(log_msg))
-            },
+            }
 
             ScriptAction::StopMedia { media_type, device } => {
                 let log_msg = format!("Stopping media: type={:?}, device={:?}", media_type, device);
                 info!("{}", log_msg);
                 Ok(Some(log_msg))
-            },
+            }
 
-            ScriptAction::Wait { duration, description } => {
+            ScriptAction::Wait {
+                duration,
+                description,
+            } => {
                 let desc = description.as_deref().unwrap_or("Waiting");
                 let log_msg = format!("{} for {:.2} seconds", desc, duration);
                 info!("{}", log_msg);
@@ -574,58 +611,90 @@ impl JsonDslEngine {
                 tokio::time::sleep(Duration::from_secs_f64(*duration)).await;
 
                 Ok(Some(log_msg))
-            },
+            }
 
-            ScriptAction::StartRecording { output_path, quality, record_video, record_audio, max_duration } => {
-                let log_msg = format!("Starting recording: {} (quality: {:?}, video: {:?}, audio: {:?})",
-                    output_path, quality, record_video, record_audio);
+            ScriptAction::StartRecording {
+                output_path,
+                quality,
+                record_video,
+                record_audio,
+                max_duration,
+            } => {
+                let log_msg = format!(
+                    "Starting recording: {} (quality: {:?}, video: {:?}, audio: {:?})",
+                    output_path, quality, record_video, record_audio
+                );
                 info!("{}", log_msg);
                 Ok(Some(log_msg))
-            },
+            }
 
             ScriptAction::StopRecording { save_path } => {
                 let log_msg = format!("Stopping recording: save_path={:?}", save_path);
                 info!("{}", log_msg);
                 Ok(Some(log_msg))
-            },
+            }
 
-            ScriptAction::SetVirtualDevice { device_type, action, source } => {
-                let log_msg = format!("Virtual device {}: {} (source: {:?})", device_type, action, source);
+            ScriptAction::SetVirtualDevice {
+                device_type,
+                action,
+                source,
+            } => {
+                let log_msg = format!(
+                    "Virtual device {}: {} (source: {:?})",
+                    device_type, action, source
+                );
                 info!("{}", log_msg);
                 Ok(Some(log_msg))
-            },
+            }
 
-            ScriptAction::ExecuteCommand { command, args, working_dir, timeout } => {
+            ScriptAction::ExecuteCommand {
+                command,
+                args,
+                working_dir,
+                timeout,
+            } => {
                 let args_str = args.as_ref().map(|a| a.join(" ")).unwrap_or_default();
                 let log_msg = format!("Executing command: {} {}", command, args_str);
                 info!("{}", log_msg);
 
                 // Command execution would go here with proper safety checks
                 Ok(Some(log_msg))
-            },
+            }
 
             ScriptAction::SetVariable { name, value } => {
                 context.variables.insert(name.clone(), value.clone());
                 let log_msg = format!("Set variable '{}' to {:?}", name, value);
                 debug!("{}", log_msg);
                 Ok(Some(log_msg))
-            },
+            }
 
-            ScriptAction::If { condition, then_actions, else_actions } => {
+            ScriptAction::If {
+                condition,
+                then_actions,
+                else_actions,
+            } => {
                 let condition_result = self.evaluate_condition(condition)?;
                 let log_msg = format!("Condition evaluated to: {}", condition_result);
                 debug!("{}", log_msg);
 
-                let actions_to_execute = if condition_result { then_actions } else { else_actions.as_deref().unwrap_or(&[]) };
+                let actions_to_execute = if condition_result {
+                    then_actions
+                } else {
+                    else_actions.as_deref().unwrap_or(&[])
+                };
 
                 for (nested_index, nested_action) in actions_to_execute.iter().enumerate() {
                     self.execute_action(nested_action, nested_index).await?;
                 }
 
                 Ok(Some(log_msg))
-            },
+            }
 
-            ScriptAction::While { condition, actions, max_iterations } => {
+            ScriptAction::While {
+                condition,
+                actions,
+                max_iterations,
+            } => {
                 let mut iteration_count = 0;
                 let mut condition_result = self.evaluate_condition(condition)?;
 
@@ -647,15 +716,26 @@ impl JsonDslEngine {
                 let log_msg = format!("While loop completed after {} iterations", iteration_count);
                 debug!("{}", log_msg);
                 Ok(Some(log_msg))
-            },
+            }
 
-            ScriptAction::For { variable, from, to, step, actions } => {
+            ScriptAction::For {
+                variable,
+                from,
+                to,
+                step,
+                actions,
+            } => {
                 let step_val = step.unwrap_or(1);
-                let log_msg = format!("For loop: {} from {} to {} step {}", variable, from, to, step_val);
+                let log_msg = format!(
+                    "For loop: {} from {} to {} step {}",
+                    variable, from, to, step_val
+                );
                 debug!("{}", log_msg);
 
                 for i in (*from..*to).step_by(step_val.unsigned_abs() as usize) {
-                    context.variables.insert(variable.clone(), ScriptValue::Integer(i as i64));
+                    context
+                        .variables
+                        .insert(variable.clone(), ScriptValue::Integer(i as i64));
 
                     for (nested_index, nested_action) in actions.iter().enumerate() {
                         self.execute_action(nested_action, nested_index).await?;
@@ -663,9 +743,13 @@ impl JsonDslEngine {
                 }
 
                 Ok(Some(log_msg))
-            },
+            }
 
-            ScriptAction::Log { level, message, include_variables } => {
+            ScriptAction::Log {
+                level,
+                message,
+                include_variables,
+            } => {
                 let level_str = level.as_deref().unwrap_or("info");
                 let final_message = if include_variables.unwrap_or(false) {
                     self.format_message_with_variables(message)
@@ -680,44 +764,57 @@ impl JsonDslEngine {
                     _ => info!("{}", final_message),
                 }
 
-                Ok(Some(format!("[{}] {}", level_str.to_uppercase(), final_message)))
-            },
+                Ok(Some(format!(
+                    "[{}] {}",
+                    level_str.to_uppercase(),
+                    final_message
+                )))
+            }
 
-            ScriptAction::CallFunction { function, parameters } => {
-                let log_msg = format!("Calling function: {} with parameters: {:?}", function, parameters);
+            ScriptAction::CallFunction {
+                function,
+                parameters,
+            } => {
+                let log_msg = format!(
+                    "Calling function: {} with parameters: {:?}",
+                    function, parameters
+                );
                 info!("{}", log_msg);
 
                 // Function calling would integrate with the existing Rhai engine
                 Ok(Some(log_msg))
-            },
+            }
         }
     }
 
     /// Evaluate a script condition
     fn evaluate_condition(&self, condition: &ScriptCondition) -> Result<bool> {
-        let context = self.context.as_ref().ok_or_else(|| anyhow!("No execution context"))?;
+        let context = self
+            .context
+            .as_ref()
+            .ok_or_else(|| anyhow!("No execution context"))?;
 
         match condition {
             ScriptCondition::Equals { left, right } => {
                 Ok(self.compare_values(left, right) == std::cmp::Ordering::Equal)
-            },
+            }
             ScriptCondition::NotEquals { left, right } => {
                 Ok(self.compare_values(left, right) != std::cmp::Ordering::Equal)
-            },
+            }
             ScriptCondition::GreaterThan { left, right } => {
                 Ok(self.compare_values(left, right) == std::cmp::Ordering::Greater)
-            },
+            }
             ScriptCondition::LessThan { left, right } => {
                 Ok(self.compare_values(left, right) == std::cmp::Ordering::Less)
-            },
+            }
             ScriptCondition::GreaterThanOrEqual { left, right } => {
                 let cmp = self.compare_values(left, right);
                 Ok(cmp == std::cmp::Ordering::Greater || cmp == std::cmp::Ordering::Equal)
-            },
+            }
             ScriptCondition::LessThanOrEqual { left, right } => {
                 let cmp = self.compare_values(left, right);
                 Ok(cmp == std::cmp::Ordering::Less || cmp == std::cmp::Ordering::Equal)
-            },
+            }
             ScriptCondition::And { conditions } => {
                 for cond in conditions {
                     if !self.evaluate_condition(cond)? {
@@ -725,7 +822,7 @@ impl JsonDslEngine {
                     }
                 }
                 Ok(true)
-            },
+            }
             ScriptCondition::Or { conditions } => {
                 for cond in conditions {
                     if self.evaluate_condition(cond)? {
@@ -733,16 +830,10 @@ impl JsonDslEngine {
                     }
                 }
                 Ok(false)
-            },
-            ScriptCondition::Not { condition } => {
-                Ok(!self.evaluate_condition(condition)?)
-            },
-            ScriptCondition::VariableExists { name } => {
-                Ok(context.variables.contains_key(name))
-            },
-            ScriptCondition::FileExists { path } => {
-                Ok(std::path::Path::new(path).exists())
-            },
+            }
+            ScriptCondition::Not { condition } => Ok(!self.evaluate_condition(condition)?),
+            ScriptCondition::VariableExists { name } => Ok(context.variables.contains_key(name)),
+            ScriptCondition::FileExists { path } => Ok(std::path::Path::new(path).exists()),
         }
     }
 
@@ -752,11 +843,17 @@ impl JsonDslEngine {
 
         match (left, right) {
             (ScriptValue::String(l), ScriptValue::String(r)) => l.cmp(r),
-            (ScriptValue::Number(l), ScriptValue::Number(r)) => l.partial_cmp(r).unwrap_or(Ordering::Equal),
+            (ScriptValue::Number(l), ScriptValue::Number(r)) => {
+                l.partial_cmp(r).unwrap_or(Ordering::Equal)
+            }
             (ScriptValue::Integer(l), ScriptValue::Integer(r)) => l.cmp(r),
             (ScriptValue::Boolean(l), ScriptValue::Boolean(r)) => l.cmp(r),
-            (ScriptValue::Integer(l), ScriptValue::Number(r)) => (*l as f64).partial_cmp(r).unwrap_or(Ordering::Equal),
-            (ScriptValue::Number(l), ScriptValue::Integer(r)) => l.partial_cmp(&(*r as f64)).unwrap_or(Ordering::Equal),
+            (ScriptValue::Integer(l), ScriptValue::Number(r)) => {
+                (*l as f64).partial_cmp(r).unwrap_or(Ordering::Equal)
+            }
+            (ScriptValue::Number(l), ScriptValue::Integer(r)) => {
+                l.partial_cmp(&(*r as f64)).unwrap_or(Ordering::Equal)
+            }
             _ => Ordering::Equal, // Default fallback
         }
     }
@@ -898,7 +995,6 @@ pub fn create_example_scripts() -> Vec<JsonDslScript> {
                 loop_delay: Some(0.0),
             }),
         },
-
         // Complex media sequence with conditional logic
         JsonDslScript {
             id: Some("complex_media_sequence".to_string()),
@@ -909,7 +1005,11 @@ pub fn create_example_scripts() -> Vec<JsonDslScript> {
                 author: Some("System".to_string()),
                 created_at: Some(Utc::now()),
                 modified_at: Some(Utc::now()),
-                tags: Some(vec!["complex".to_string(), "media".to_string(), "looping".to_string()]),
+                tags: Some(vec![
+                    "complex".to_string(),
+                    "media".to_string(),
+                    "looping".to_string(),
+                ]),
                 estimated_duration: Some(60.0),
             }),
             actions: vec![
@@ -941,13 +1041,11 @@ pub fn create_example_scripts() -> Vec<JsonDslScript> {
                             include_variables: Some(false),
                         },
                     ],
-                    else_actions: Some(vec![
-                        ScriptAction::Log {
-                            level: Some("warn".to_string()),
-                            message: "Background music file not found".to_string(),
-                            include_variables: Some(false),
-                        },
-                    ]),
+                    else_actions: Some(vec![ScriptAction::Log {
+                        level: Some("warn".to_string()),
+                        message: "Background music file not found".to_string(),
+                        include_variables: Some(false),
+                    }]),
                 },
                 ScriptAction::For {
                     variable: "i".to_string(),
@@ -988,9 +1086,10 @@ pub fn create_example_scripts() -> Vec<JsonDslScript> {
                     include_variables: Some(true),
                 },
             ],
-            variables: Some(HashMap::from([
-                ("total_loops".to_string(), ScriptValue::Integer(3)),
-            ])),
+            variables: Some(HashMap::from([(
+                "total_loops".to_string(),
+                ScriptValue::Integer(3),
+            )])),
             config: Some(ScriptConfig {
                 stop_on_error: Some(true),
                 default_timeout: Some(60.0),

@@ -3,9 +3,9 @@
 //! Configuration structures and presets for the combined recording pipeline,
 //! including quality settings, resolution options, and format specifications.
 
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use anyhow::{Result, anyhow};
 
 /// Recording resolution presets
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -103,22 +103,22 @@ impl VideoQualityPreset {
     /// Get the recommended bitrate in Mbps for 1080p
     pub fn recommended_bitrate_1080p(self) -> u32 {
         match self {
-            VideoQualityPreset::Fast => 3_000_000,  // 3 Mbps
-            VideoQualityPreset::Balanced => 5_000_000,  // 5 Mbps
-            VideoQualityPreset::High => 8_000_000,  // 8 Mbps
-            VideoQualityPreset::Ultra => 12_000_000, // 12 Mbps
-            VideoQualityPreset::Custom => 5_000_000, // Default to balanced
+            VideoQualityPreset::Fast => 3_000_000,     // 3 Mbps
+            VideoQualityPreset::Balanced => 5_000_000, // 5 Mbps
+            VideoQualityPreset::High => 8_000_000,     // 8 Mbps
+            VideoQualityPreset::Ultra => 12_000_000,   // 12 Mbps
+            VideoQualityPreset::Custom => 5_000_000,   // Default to balanced
         }
     }
 
     /// Get the recommended bitrate in Mbps for 720p
     pub fn recommended_bitrate_720p(self) -> u32 {
         match self {
-            VideoQualityPreset::Fast => 1_500_000,  // 1.5 Mbps
-            VideoQualityPreset::Balanced => 2_500_000,  // 2.5 Mbps
-            VideoQualityPreset::High => 4_000_000,  // 4 Mbps
-            VideoQualityPreset::Ultra => 6_000_000,  // 6 Mbps
-            VideoQualityPreset::Custom => 2_500_000, // Default to balanced
+            VideoQualityPreset::Fast => 1_500_000,     // 1.5 Mbps
+            VideoQualityPreset::Balanced => 2_500_000, // 2.5 Mbps
+            VideoQualityPreset::High => 4_000_000,     // 4 Mbps
+            VideoQualityPreset::Ultra => 6_000_000,    // 6 Mbps
+            VideoQualityPreset::Custom => 2_500_000,   // Default to balanced
         }
     }
 
@@ -155,12 +155,12 @@ impl AudioQualityPreset {
     /// Get the recommended audio bitrate in bps
     pub fn recommended_bitrate(self) -> u32 {
         match self {
-            AudioQualityPreset::Low => 64_000,     // 64 kbps
-            AudioQualityPreset::Voice => 96_000,    // 96 kbps
+            AudioQualityPreset::Low => 64_000,       // 64 kbps
+            AudioQualityPreset::Voice => 96_000,     // 96 kbps
             AudioQualityPreset::Standard => 128_000, // 128 kbps
-            AudioQualityPreset::High => 192_000,    // 192 kbps
+            AudioQualityPreset::High => 192_000,     // 192 kbps
             AudioQualityPreset::Lossless => 320_000, // 320 kbps (not truly lossless, but high)
-            AudioQualityPreset::Custom => 128_000,  // Default to standard
+            AudioQualityPreset::Custom => 128_000,   // Default to standard
         }
     }
 
@@ -522,11 +522,15 @@ impl RecordingConfig {
 
         // Validate audio settings
         if self.audio.sample_rate < 8000 || self.audio.sample_rate > 192000 {
-            return Err(anyhow!("Invalid audio sample rate: must be between 8kHz and 192kHz"));
+            return Err(anyhow!(
+                "Invalid audio sample rate: must be between 8kHz and 192kHz"
+            ));
         }
 
         if self.audio.channels == 0 || self.audio.channels > 8 {
-            return Err(anyhow!("Invalid audio channel count: must be between 1 and 8"));
+            return Err(anyhow!(
+                "Invalid audio channel count: must be between 1 and 8"
+            ));
         }
 
         if self.audio.target_bitrate > 1_000_000 {
@@ -599,10 +603,10 @@ impl Default for RecordingConfig {
                 frame_rate: FrameRate::FPS30,
                 codec: VideoCodec::H264,
                 quality_preset: VideoQualityPreset::Balanced,
-                target_bitrate: 0, // Auto
-                crf: 0, // Use preset default
+                target_bitrate: 0,    // Auto
+                crf: 0,               // Use preset default
                 keyframe_interval: 2, // 2 seconds
-                buffer_size: 60, // 2 seconds at 30fps
+                buffer_size: 60,      // 2 seconds at 30fps
             },
             audio: AudioSettings {
                 codec: AudioCodec::AAC,
@@ -684,8 +688,14 @@ mod tests {
         assert_eq!(VideoQualityPreset::Fast.crf_value(), 28);
         assert_eq!(VideoQualityPreset::High.crf_value(), 18);
 
-        assert_eq!(VideoQualityPreset::Balanced.recommended_bitrate_1080p(), 5_000_000);
-        assert_eq!(VideoQualityPreset::High.recommended_bitrate_720p(), 4_000_000);
+        assert_eq!(
+            VideoQualityPreset::Balanced.recommended_bitrate_1080p(),
+            5_000_000
+        );
+        assert_eq!(
+            VideoQualityPreset::High.recommended_bitrate_720p(),
+            4_000_000
+        );
     }
 
     #[test]

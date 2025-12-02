@@ -4,12 +4,15 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use tauri::{command, State};
 use std::sync::{Arc, Mutex as StdMutex};
-use tracing::{info, error, warn, debug};
+use tauri::{command, State};
+use tracing::{debug, error, info, warn};
 
-use crate::virtual_device::{VirtualWebcam, WebcamBackend, VirtualMicrophone, MicrophoneBackend, MediaRouter, MediaRoutingConfig};
 use crate::audio::AudioConfig;
+use crate::virtual_device::{
+    MediaRouter, MediaRoutingConfig, MicrophoneBackend, VirtualMicrophone, VirtualWebcam,
+    WebcamBackend,
+};
 
 /// Shared state for virtual devices
 pub struct VirtualDeviceState {
@@ -49,7 +52,9 @@ pub async fn initialize_webcam(
     let backend = match backend.as_str() {
         "DirectShow" => WebcamBackend::DirectShow,
         "MediaFoundation" => WebcamBackend::MediaFoundation,
-        _ => return Err("Invalid webcam backend. Use 'DirectShow' or 'MediaFoundation'".to_string()),
+        _ => {
+            return Err("Invalid webcam backend. Use 'DirectShow' or 'MediaFoundation'".to_string())
+        }
     };
 
     let webcam = VirtualWebcam::with_backend(backend);
@@ -59,7 +64,10 @@ pub async fn initialize_webcam(
         return Err(format!("Failed to initialize virtual webcam: {}", e));
     }
 
-    let mut webcam_state = state.webcam.lock().map_err(|e| format!("Failed to lock webcam state: {}", e))?;
+    let mut webcam_state = state
+        .webcam
+        .lock()
+        .map_err(|e| format!("Failed to lock webcam state: {}", e))?;
     *webcam_state = Some(webcam);
 
     info!("Virtual webcam initialized successfully");
@@ -77,7 +85,9 @@ pub async fn initialize_microphone(
     let backend = match backend.as_str() {
         "WASAPI" => MicrophoneBackend::WASAPI,
         "KernelStreaming" => MicrophoneBackend::KernelStreaming,
-        _ => return Err("Invalid microphone backend. Use 'WASAPI' or 'KernelStreaming'".to_string()),
+        _ => {
+            return Err("Invalid microphone backend. Use 'WASAPI' or 'KernelStreaming'".to_string())
+        }
     };
 
     let microphone = VirtualMicrophone::with_backend(backend);
@@ -87,7 +97,10 @@ pub async fn initialize_microphone(
         return Err(format!("Failed to initialize virtual microphone: {}", e));
     }
 
-    let mut microphone_state = state.microphone.lock().map_err(|e| format!("Failed to lock microphone state: {}", e))?;
+    let mut microphone_state = state
+        .microphone
+        .lock()
+        .map_err(|e| format!("Failed to lock microphone state: {}", e))?;
     *microphone_state = Some(microphone);
 
     info!("Virtual microphone initialized successfully");
@@ -102,8 +115,13 @@ pub async fn start_webcam_streaming(
 ) -> Result<(), String> {
     info!("Starting webcam streaming for: {}", video_path);
 
-    let webcam_state = state.webcam.lock().map_err(|e| format!("Failed to lock webcam state: {}", e))?;
-    let webcam = webcam_state.as_ref().ok_or("Virtual webcam not initialized")?;
+    let webcam_state = state
+        .webcam
+        .lock()
+        .map_err(|e| format!("Failed to lock webcam state: {}", e))?;
+    let webcam = webcam_state
+        .as_ref()
+        .ok_or("Virtual webcam not initialized")?;
 
     if let Err(e) = webcam.start_streaming(&video_path).await {
         error!("Failed to start webcam streaming: {}", e);
@@ -122,8 +140,13 @@ pub async fn start_microphone_streaming(
 ) -> Result<(), String> {
     info!("Starting microphone streaming for: {}", audio_path);
 
-    let microphone_state = state.microphone.lock().map_err(|e| format!("Failed to lock microphone state: {}", e))?;
-    let microphone = microphone_state.as_ref().ok_or("Virtual microphone not initialized")?;
+    let microphone_state = state
+        .microphone
+        .lock()
+        .map_err(|e| format!("Failed to lock microphone state: {}", e))?;
+    let microphone = microphone_state
+        .as_ref()
+        .ok_or("Virtual microphone not initialized")?;
 
     if let Err(e) = microphone.start_streaming(&audio_path).await {
         error!("Failed to start microphone streaming: {}", e);
@@ -136,13 +159,16 @@ pub async fn start_microphone_streaming(
 
 /// Stop virtual webcam streaming
 #[command]
-pub async fn stop_webcam_streaming(
-    state: State<'_, VirtualDeviceState>,
-) -> Result<(), String> {
+pub async fn stop_webcam_streaming(state: State<'_, VirtualDeviceState>) -> Result<(), String> {
     info!("Stopping webcam streaming");
 
-    let webcam_state = state.webcam.lock().map_err(|e| format!("Failed to lock webcam state: {}", e))?;
-    let webcam = webcam_state.as_ref().ok_or("Virtual webcam not initialized")?;
+    let webcam_state = state
+        .webcam
+        .lock()
+        .map_err(|e| format!("Failed to lock webcam state: {}", e))?;
+    let webcam = webcam_state
+        .as_ref()
+        .ok_or("Virtual webcam not initialized")?;
 
     if let Err(e) = webcam.stop_streaming().await {
         error!("Failed to stop webcam streaming: {}", e);
@@ -155,13 +181,16 @@ pub async fn stop_webcam_streaming(
 
 /// Stop virtual microphone streaming
 #[command]
-pub async fn stop_microphone_streaming(
-    state: State<'_, VirtualDeviceState>,
-) -> Result<(), String> {
+pub async fn stop_microphone_streaming(state: State<'_, VirtualDeviceState>) -> Result<(), String> {
     info!("Stopping microphone streaming");
 
-    let microphone_state = state.microphone.lock().map_err(|e| format!("Failed to lock microphone state: {}", e))?;
-    let microphone = microphone_state.as_ref().ok_or("Virtual microphone not initialized")?;
+    let microphone_state = state
+        .microphone
+        .lock()
+        .map_err(|e| format!("Failed to lock microphone state: {}", e))?;
+    let microphone = microphone_state
+        .as_ref()
+        .ok_or("Virtual microphone not initialized")?;
 
     if let Err(e) = microphone.stop_streaming().await {
         error!("Failed to stop microphone streaming: {}", e);
@@ -177,17 +206,26 @@ pub async fn stop_microphone_streaming(
 pub async fn get_virtual_device_status(
     state: State<'_, VirtualDeviceState>,
 ) -> Result<VirtualDeviceStatus, String> {
-    let webcam_state = state.webcam.lock().map_err(|e| format!("Failed to lock webcam state: {}", e))?;
-    let microphone_state = state.microphone.lock().map_err(|e| format!("Failed to lock microphone state: {}", e))?;
-    let router_state = state.media_router.lock().map_err(|e| format!("Failed to lock media router state: {}", e))?;
+    let webcam_state = state
+        .webcam
+        .lock()
+        .map_err(|e| format!("Failed to lock webcam state: {}", e))?;
+    let microphone_state = state
+        .microphone
+        .lock()
+        .map_err(|e| format!("Failed to lock microphone state: {}", e))?;
+    let router_state = state
+        .media_router
+        .lock()
+        .map_err(|e| format!("Failed to lock media router state: {}", e))?;
 
-    let webcam_active = webcam_state.as_ref().map_or(false, |w| {
-        futures::executor::block_on(w.is_active())
-    });
+    let webcam_active = webcam_state
+        .as_ref()
+        .map_or(false, |w| futures::executor::block_on(w.is_active()));
 
-    let microphone_active = microphone_state.as_ref().map_or(false, |m| {
-        futures::executor::block_on(m.is_active())
-    });
+    let microphone_active = microphone_state
+        .as_ref()
+        .map_or(false, |m| futures::executor::block_on(m.is_active()));
 
     let media_router_active = router_state.as_ref().map_or(false, |r| {
         futures::executor::block_on(r.get_status()).is_active
@@ -217,7 +255,7 @@ pub async fn list_virtual_devices() -> Result<Vec<String>, String> {
         Ok(webcam_devices) => {
             devices.push("Webcam Devices:".to_string());
             devices.extend(webcam_devices);
-        },
+        }
         Err(e) => warn!("Failed to enumerate webcam devices: {}", e),
     }
 
@@ -226,7 +264,7 @@ pub async fn list_virtual_devices() -> Result<Vec<String>, String> {
         Ok(mic_devices) => {
             devices.push("Microphone Devices:".to_string());
             devices.extend(mic_devices);
-        },
+        }
         Err(e) => warn!("Failed to enumerate microphone devices: {}", e),
     }
 
@@ -248,12 +286,17 @@ pub async fn initialize_media_router(
     audio_backend: String,
     state: State<'_, VirtualDeviceState>,
 ) -> Result<(), String> {
-    info!("Initializing media router with video backend: {}, audio backend: {}", video_backend, audio_backend);
+    info!(
+        "Initializing media router with video backend: {}, audio backend: {}",
+        video_backend, audio_backend
+    );
 
     let video_backend = match video_backend.as_str() {
         "DirectShow" => WebcamBackend::DirectShow,
         "MediaFoundation" => WebcamBackend::MediaFoundation,
-        _ => return Err("Invalid video backend. Use 'DirectShow' or 'MediaFoundation'".to_string()),
+        _ => {
+            return Err("Invalid video backend. Use 'DirectShow' or 'MediaFoundation'".to_string())
+        }
     };
 
     let audio_backend = match audio_backend.as_str() {
@@ -275,7 +318,10 @@ pub async fn initialize_media_router(
         return Err(format!("Failed to initialize media router: {}", e));
     }
 
-    let mut router_state = state.media_router.lock().map_err(|e| format!("Failed to lock media router state: {}", e))?;
+    let mut router_state = state
+        .media_router
+        .lock()
+        .map_err(|e| format!("Failed to lock media router state: {}", e))?;
     *router_state = Some(media_router);
 
     info!("Media router initialized successfully");
@@ -295,8 +341,13 @@ pub async fn start_media_routing(
 ) -> Result<(), String> {
     info!("Starting media routing");
 
-    let router_state = state.media_router.lock().map_err(|e| format!("Failed to lock media router state: {}", e))?;
-    let media_router = router_state.as_ref().ok_or("Media router not initialized")?;
+    let router_state = state
+        .media_router
+        .lock()
+        .map_err(|e| format!("Failed to lock media router state: {}", e))?;
+    let media_router = router_state
+        .as_ref()
+        .ok_or("Media router not initialized")?;
 
     // Get current configuration
     let current_config = futures::executor::block_on(media_router.get_status()).config;
@@ -322,13 +373,16 @@ pub async fn start_media_routing(
 
 /// Stop media routing
 #[command]
-pub async fn stop_media_routing(
-    state: State<'_, VirtualDeviceState>,
-) -> Result<(), String> {
+pub async fn stop_media_routing(state: State<'_, VirtualDeviceState>) -> Result<(), String> {
     info!("Stopping media routing");
 
-    let router_state = state.media_router.lock().map_err(|e| format!("Failed to lock media router state: {}", e))?;
-    let media_router = router_state.as_ref().ok_or("Media router not initialized")?;
+    let router_state = state
+        .media_router
+        .lock()
+        .map_err(|e| format!("Failed to lock media router state: {}", e))?;
+    let media_router = router_state
+        .as_ref()
+        .ok_or("Media router not initialized")?;
 
     if let Err(e) = media_router.stop().await {
         error!("Failed to stop media routing: {}", e);
@@ -346,10 +400,18 @@ pub async fn switch_media(
     audio_path: Option<String>,
     state: State<'_, VirtualDeviceState>,
 ) -> Result<(), String> {
-    info!("Switching media - video: {:?}, audio: {:?}", video_path, audio_path);
+    info!(
+        "Switching media - video: {:?}, audio: {:?}",
+        video_path, audio_path
+    );
 
-    let router_state = state.media_router.lock().map_err(|e| format!("Failed to lock media router state: {}", e))?;
-    let media_router = router_state.as_ref().ok_or("Media router not initialized")?;
+    let router_state = state
+        .media_router
+        .lock()
+        .map_err(|e| format!("Failed to lock media router state: {}", e))?;
+    let media_router = router_state
+        .as_ref()
+        .ok_or("Media router not initialized")?;
 
     if let Err(e) = media_router.switch_media(video_path, audio_path).await {
         error!("Failed to switch media: {}", e);
@@ -368,8 +430,13 @@ pub async fn set_microphone_volume(
 ) -> Result<(), String> {
     info!("Setting microphone volume to: {}", volume);
 
-    let microphone_state = state.microphone.lock().map_err(|e| format!("Failed to lock microphone state: {}", e))?;
-    let microphone = microphone_state.as_ref().ok_or("Virtual microphone not initialized")?;
+    let microphone_state = state
+        .microphone
+        .lock()
+        .map_err(|e| format!("Failed to lock microphone state: {}", e))?;
+    let microphone = microphone_state
+        .as_ref()
+        .ok_or("Virtual microphone not initialized")?;
 
     if let Err(e) = microphone.set_volume(volume).await {
         error!("Failed to set microphone volume: {}", e);
@@ -382,11 +449,14 @@ pub async fn set_microphone_volume(
 
 /// Get microphone volume
 #[command]
-pub async fn get_microphone_volume(
-    state: State<'_, VirtualDeviceState>,
-) -> Result<f32, String> {
-    let microphone_state = state.microphone.lock().map_err(|e| format!("Failed to lock microphone state: {}", e))?;
-    let microphone = microphone_state.as_ref().ok_or("Virtual microphone not initialized")?;
+pub async fn get_microphone_volume(state: State<'_, VirtualDeviceState>) -> Result<f32, String> {
+    let microphone_state = state
+        .microphone
+        .lock()
+        .map_err(|e| format!("Failed to lock microphone state: {}", e))?;
+    let microphone = microphone_state
+        .as_ref()
+        .ok_or("Virtual microphone not initialized")?;
 
     let volume = microphone.get_volume().await;
     Ok(volume)
@@ -400,8 +470,13 @@ pub async fn set_microphone_muted(
 ) -> Result<(), String> {
     info!("Setting microphone mute to: {}", muted);
 
-    let microphone_state = state.microphone.lock().map_err(|e| format!("Failed to lock microphone state: {}", e))?;
-    let microphone = microphone_state.as_ref().ok_or("Virtual microphone not initialized")?;
+    let microphone_state = state
+        .microphone
+        .lock()
+        .map_err(|e| format!("Failed to lock microphone state: {}", e))?;
+    let microphone = microphone_state
+        .as_ref()
+        .ok_or("Virtual microphone not initialized")?;
 
     microphone.set_muted(muted).await;
     info!("Microphone mute set successfully");
@@ -410,11 +485,14 @@ pub async fn set_microphone_muted(
 
 /// Get microphone mute state
 #[command]
-pub async fn get_microphone_muted(
-    state: State<'_, VirtualDeviceState>,
-) -> Result<bool, String> {
-    let microphone_state = state.microphone.lock().map_err(|e| format!("Failed to lock microphone state: {}", e))?;
-    let microphone = microphone_state.as_ref().ok_or("Virtual microphone not initialized")?;
+pub async fn get_microphone_muted(state: State<'_, VirtualDeviceState>) -> Result<bool, String> {
+    let microphone_state = state
+        .microphone
+        .lock()
+        .map_err(|e| format!("Failed to lock microphone state: {}", e))?;
+    let microphone = microphone_state
+        .as_ref()
+        .ok_or("Virtual microphone not initialized")?;
 
     let muted = microphone.is_muted().await;
     Ok(muted)
@@ -425,8 +503,13 @@ pub async fn get_microphone_muted(
 pub async fn get_media_routing_status(
     state: State<'_, VirtualDeviceState>,
 ) -> Result<crate::virtual_device::MediaRoutingStatus, String> {
-    let router_state = state.media_router.lock().map_err(|e| format!("Failed to lock media router state: {}", e))?;
-    let media_router = router_state.as_ref().ok_or("Media router not initialized")?;
+    let router_state = state
+        .media_router
+        .lock()
+        .map_err(|e| format!("Failed to lock media router state: {}", e))?;
+    let media_router = router_state
+        .as_ref()
+        .ok_or("Media router not initialized")?;
 
     let status = media_router.get_status().await;
     Ok(status)
@@ -437,10 +520,18 @@ pub async fn get_media_routing_status(
 pub async fn get_webcam_video_info(
     state: State<'_, VirtualDeviceState>,
 ) -> Result<Option<crate::virtual_device::VideoInfo>, String> {
-    let webcam_state = state.webcam.lock().map_err(|e| format!("Failed to lock webcam state: {}", e))?;
-    let webcam = webcam_state.as_ref().ok_or("Virtual webcam not initialized")?;
+    let webcam_state = state
+        .webcam
+        .lock()
+        .map_err(|e| format!("Failed to lock webcam state: {}", e))?;
+    let webcam = webcam_state
+        .as_ref()
+        .ok_or("Virtual webcam not initialized")?;
 
-    let video_info = webcam.get_video_info().await.map_err(|e| format!("Failed to get video info: {}", e))?;
+    let video_info = webcam
+        .get_video_info()
+        .await
+        .map_err(|e| format!("Failed to get video info: {}", e))?;
     Ok(video_info)
 }
 
@@ -449,8 +540,13 @@ pub async fn get_webcam_video_info(
 pub async fn get_webcam_buffer_status(
     state: State<'_, VirtualDeviceState>,
 ) -> Result<crate::virtual_device::BufferStatus, String> {
-    let webcam_state = state.webcam.lock().map_err(|e| format!("Failed to lock webcam state: {}", e))?;
-    let webcam = webcam_state.as_ref().ok_or("Virtual webcam not initialized")?;
+    let webcam_state = state
+        .webcam
+        .lock()
+        .map_err(|e| format!("Failed to lock webcam state: {}", e))?;
+    let webcam = webcam_state
+        .as_ref()
+        .ok_or("Virtual webcam not initialized")?;
 
     let buffer_status = webcam.get_buffer_status().await;
     Ok(buffer_status)
@@ -461,8 +557,13 @@ pub async fn get_webcam_buffer_status(
 pub async fn get_microphone_buffer_status(
     state: State<'_, VirtualDeviceState>,
 ) -> Result<(usize, usize, u64), String> {
-    let microphone_state = state.microphone.lock().map_err(|e| format!("Failed to lock microphone state: {}", e))?;
-    let microphone = microphone_state.as_ref().ok_or("Virtual microphone not initialized")?;
+    let microphone_state = state
+        .microphone
+        .lock()
+        .map_err(|e| format!("Failed to lock microphone state: {}", e))?;
+    let microphone = microphone_state
+        .as_ref()
+        .ok_or("Virtual microphone not initialized")?;
 
     let buffer_status = microphone.get_buffer_status().await;
     Ok(buffer_status)

@@ -3,15 +3,15 @@
 //! This module provides high-level routing of media content to virtual devices,
 //! coordinating between video and audio pipelines for synchronized playback.
 
-use anyhow::{Result, anyhow};
-use std::sync::{Arc, Mutex as StdMutex};
+use anyhow::{anyhow, Result};
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::Mutex;
-use tracing::{info, error, warn, debug};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex as StdMutex};
 use std::thread;
+use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
+use tracing::{debug, error, info, warn};
 
-use super::{VirtualWebcam, WebcamBackend, VirtualMicrophone, MicrophoneBackend};
+use super::{MicrophoneBackend, VirtualMicrophone, VirtualWebcam, WebcamBackend};
 use crate::audio::AudioConfig;
 
 /// Media routing configuration
@@ -89,12 +89,16 @@ impl MediaRouter {
     pub fn with_config(config: MediaRoutingConfig) -> Self {
         let virtual_webcam = match config.video_backend {
             WebcamBackend::DirectShow => VirtualWebcam::with_backend(WebcamBackend::DirectShow),
-            WebcamBackend::MediaFoundation => VirtualWebcam::with_backend(WebcamBackend::MediaFoundation),
+            WebcamBackend::MediaFoundation => {
+                VirtualWebcam::with_backend(WebcamBackend::MediaFoundation)
+            }
         };
 
         let virtual_microphone = match config.audio_backend {
             MicrophoneBackend::WASAPI => VirtualMicrophone::with_backend(MicrophoneBackend::WASAPI),
-            MicrophoneBackend::KernelStreaming => VirtualMicrophone::with_backend(MicrophoneBackend::KernelStreaming),
+            MicrophoneBackend::KernelStreaming => {
+                VirtualMicrophone::with_backend(MicrophoneBackend::KernelStreaming)
+            }
         };
 
         Self {
@@ -114,12 +118,18 @@ impl MediaRouter {
 
         // Initialize virtual devices
         {
-            let mut webcam = self.virtual_webcam.lock().map_err(|_| anyhow!("Failed to lock virtual webcam"))?;
+            let mut webcam = self
+                .virtual_webcam
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock virtual webcam"))?;
             webcam.initialize().await?;
         }
 
         {
-            let mut microphone = self.virtual_microphone.lock().map_err(|_| anyhow!("Failed to lock virtual microphone"))?;
+            let mut microphone = self
+                .virtual_microphone
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock virtual microphone"))?;
             microphone.initialize().await?;
         }
 
@@ -133,7 +143,10 @@ impl MediaRouter {
             return Err(anyhow!("Media router already active"));
         }
 
-        info!("Starting media routing with video: {}, audio: {}", config.video_path, config.audio_path);
+        info!(
+            "Starting media routing with video: {}, audio: {}",
+            config.video_path, config.audio_path
+        );
 
         // Update configuration
         {
@@ -156,12 +169,18 @@ impl MediaRouter {
 
         // Start virtual device streaming
         if !config.video_path.is_empty() {
-            let mut webcam = self.virtual_webcam.lock().map_err(|_| anyhow!("Failed to lock virtual webcam"))?;
+            let mut webcam = self
+                .virtual_webcam
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock virtual webcam"))?;
             webcam.start_streaming(&config.video_path).await?;
         }
 
         if !config.audio_path.is_empty() {
-            let mut microphone = self.virtual_microphone.lock().map_err(|_| anyhow!("Failed to lock virtual microphone"))?;
+            let mut microphone = self
+                .virtual_microphone
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock virtual microphone"))?;
             microphone.start_streaming(&config.audio_path).await?;
 
             // Set audio volume
@@ -169,7 +188,8 @@ impl MediaRouter {
         }
 
         // Start synchronization thread if needed
-        if config.sync_audio_video && !config.video_path.is_empty() && !config.audio_path.is_empty() {
+        if config.sync_audio_video && !config.video_path.is_empty() && !config.audio_path.is_empty()
+        {
             self.start_sync_thread().await?;
         }
 
@@ -196,14 +216,20 @@ impl MediaRouter {
 
         // Stop virtual devices
         {
-            let webcam = self.virtual_webcam.lock().map_err(|_| anyhow!("Failed to lock virtual webcam"))?;
+            let webcam = self
+                .virtual_webcam
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock virtual webcam"))?;
             if webcam.is_active().await {
                 webcam.stop_streaming().await?;
             }
         }
 
         {
-            let microphone = self.virtual_microphone.lock().map_err(|_| anyhow!("Failed to lock virtual microphone"))?;
+            let microphone = self
+                .virtual_microphone
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock virtual microphone"))?;
             if microphone.is_active().await {
                 microphone.stop_streaming().await?;
             }
@@ -211,7 +237,10 @@ impl MediaRouter {
 
         // Reset sync state
         {
-            let mut sync_state = self.sync_state.lock().map_err(|_| anyhow!("Failed to lock sync state"))?;
+            let mut sync_state = self
+                .sync_state
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock sync state"))?;
             *sync_state = SyncState::default();
         }
 
@@ -256,7 +285,10 @@ impl MediaRouter {
             if now.duration_since(last_sync_time) >= sync_interval {
                 let rt = tokio::runtime::Runtime::new().unwrap();
                 let _ = rt.block_on(async {
-                    if let Err(e) = Self::perform_sync_check(&sync_state, &virtual_webcam, &virtual_microphone).await {
+                    if let Err(e) =
+                        Self::perform_sync_check(&sync_state, &virtual_webcam, &virtual_microphone)
+                            .await
+                    {
                         error!("Sync check failed: {}", e);
                     }
                     Some(())
@@ -278,16 +310,22 @@ impl MediaRouter {
         virtual_microphone: &StdMutex<VirtualMicrophone>,
     ) -> Result<()> {
         let webcam_active = {
-            let webcam = virtual_webcam.lock().map_err(|_| anyhow!("Failed to lock webcam"))?;
+            let webcam = virtual_webcam
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock webcam"))?;
             webcam.is_active().await
         };
 
         let microphone_active = {
-            let microphone = virtual_microphone.lock().map_err(|_| anyhow!("Failed to lock microphone"))?;
+            let microphone = virtual_microphone
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock microphone"))?;
             microphone.is_active().await
         };
 
-        let mut state = sync_state.lock().map_err(|_| anyhow!("Failed to lock sync state"))?;
+        let mut state = sync_state
+            .lock()
+            .map_err(|_| anyhow!("Failed to lock sync state"))?;
         state.is_video_playing = webcam_active;
         state.is_audio_playing = microphone_active;
 
@@ -384,7 +422,10 @@ impl MediaRouter {
 
         // Update microphone volume
         {
-            let microphone = self.virtual_microphone.lock().map_err(|_| anyhow!("Failed to lock microphone"))?;
+            let microphone = self
+                .virtual_microphone
+                .lock()
+                .map_err(|_| anyhow!("Failed to lock microphone"))?;
             microphone.set_volume(new_config.audio_volume).await?;
             microphone.set_muted(new_config.audio_volume == 0.0).await;
         }
@@ -394,8 +435,15 @@ impl MediaRouter {
     }
 
     /// Switch to new media files without stopping the stream
-    pub async fn switch_media(&self, video_path: Option<String>, audio_path: Option<String>) -> Result<()> {
-        info!("Switching media - video: {:?}, audio: {:?}", video_path, audio_path);
+    pub async fn switch_media(
+        &self,
+        video_path: Option<String>,
+        audio_path: Option<String>,
+    ) -> Result<()> {
+        info!(
+            "Switching media - video: {:?}, audio: {:?}",
+            video_path, audio_path
+        );
 
         let config = self.config.lock().await.clone();
 
@@ -408,12 +456,18 @@ impl MediaRouter {
 
                 // Stop current video
                 if !config.video_path.is_empty() {
-                    let webcam = self.virtual_webcam.lock().map_err(|_| anyhow!("Failed to lock webcam"))?;
+                    let webcam = self
+                        .virtual_webcam
+                        .lock()
+                        .map_err(|_| anyhow!("Failed to lock webcam"))?;
                     webcam.stop_streaming().await?;
                 }
 
                 // Start new video
-                let webcam = self.virtual_webcam.lock().map_err(|_| anyhow!("Failed to lock webcam"))?;
+                let webcam = self
+                    .virtual_webcam
+                    .lock()
+                    .map_err(|_| anyhow!("Failed to lock webcam"))?;
                 webcam.start_streaming(&new_video_path).await?;
 
                 // Update config
@@ -431,12 +485,18 @@ impl MediaRouter {
 
                 // Stop current audio
                 if !config.audio_path.is_empty() {
-                    let microphone = self.virtual_microphone.lock().map_err(|_| anyhow!("Failed to lock microphone"))?;
+                    let microphone = self
+                        .virtual_microphone
+                        .lock()
+                        .map_err(|_| anyhow!("Failed to lock microphone"))?;
                     microphone.stop_streaming().await?;
                 }
 
                 // Start new audio
-                let microphone = self.virtual_microphone.lock().map_err(|_| anyhow!("Failed to lock microphone"))?;
+                let microphone = self
+                    .virtual_microphone
+                    .lock()
+                    .map_err(|_| anyhow!("Failed to lock microphone"))?;
                 microphone.start_streaming(&new_audio_path).await?;
 
                 // Update config
@@ -561,10 +621,12 @@ mod tests {
     #[tokio::test]
     async fn test_media_switch_with_invalid_files() {
         let router = MediaRouter::new();
-        let result = router.switch_media(
-            Some("nonexistent.mp4".to_string()),
-            Some("nonexistent.mp3".to_string()),
-        ).await;
+        let result = router
+            .switch_media(
+                Some("nonexistent.mp4".to_string()),
+                Some("nonexistent.mp3".to_string()),
+            )
+            .await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not found"));
