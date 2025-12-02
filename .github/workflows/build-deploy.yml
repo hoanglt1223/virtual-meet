@@ -133,6 +133,52 @@ jobs:
             src-tauri/target/release/VirtualMeet.exe
           retention-days: 30
 
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v0.1.0-${{ github.run_number }}
+          release_name: VirtualMeet v0.1.0 (Build ${{ github.run_number }})
+          body: |
+            ## VirtualMeet v0.1.0 (Build ${{ github.run_number }})
+
+            ### 🚀 Features
+            - Virtual webcam and microphone streaming
+            - Media library management with search
+            - Recording functionality with multiple quality presets
+            - Global hotkeys for quick media switching
+            - Scripting support for automation
+            - JSON DSL for advanced automation
+            - Device management and configuration
+            - A/V synchronization for recordings
+
+            ### 📦 Installation
+            Download the `VirtualMeet_*.exe` installer file below and run it to install VirtualMeet on your Windows system.
+
+            ### 🔧 System Requirements
+            - Windows 10 or later
+            - Virtual audio/video device drivers (VB-CABLE, OBS Virtual Camera, etc.)
+
+            ---
+            Build timestamp: ${{ github.event.head_commit.timestamp }}
+            Commit: ${{ github.sha }}
+          draft: false
+          prerelease: true
+
+      - name: Upload Release Assets
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: src-tauri/target/release/bundle/nsis/VirtualMeet_0.1.0_x64-setup.exe
+          asset_name: VirtualMeet_0.1.0_x64-setup.exe
+          asset_content_type: application/octet-stream
+
       - name: Build status
         run: |
           if ($LASTEXITCODE -eq 0) {
