@@ -197,8 +197,7 @@ pub async fn register_hotkey(
         category: determine_hotkey_category(&request.action),
     };
 
-    // In a real implementation, you would register the hotkey with the OS
-    // For now, we'll just store it in our state
+    // TODO: Register hotkey with OS using global-hotkey crate
     let hotkey_state = app.state::<std::sync::Mutex<HotkeyState>>();
     let mut state = hotkey_state
         .lock()
@@ -241,9 +240,7 @@ pub async fn unregister_hotkey(
     match state.registered_hotkeys.remove(&hotkey_id) {
         Some(hotkey) => {
             state.hotkey_stats.remove(&hotkey_id);
-
-            // In a real implementation, you would unregister the hotkey from the OS
-
+            // TODO: Unregister hotkey from OS using global-hotkey crate
             Ok(RegisterHotkeyResponse {
                 success: true,
                 message: format!("Hotkey '{}' unregistered successfully", hotkey.name),
@@ -330,9 +327,7 @@ pub async fn set_hotkey_enabled(
     match state.registered_hotkeys.get_mut(&hotkey_id) {
         Some(hotkey) => {
             hotkey.enabled = enabled;
-
-            // In a real implementation, you would enable/disable the hotkey in the OS
-
+            // TODO: Enable/disable hotkey in OS using global-hotkey crate
             Ok(RegisterHotkeyResponse {
                 success: true,
                 message: format!(
@@ -690,8 +685,7 @@ fn check_key_combination_conflicts(
     key_combination: &str,
     exclude_id: Option<String>,
 ) -> Vec<HotkeyDefinition> {
-    // In a real implementation, you would check against registered hotkeys
-    // For now, return empty as we don't have persistent storage
+    // TODO: Check against registered hotkeys in HotkeyState
     Vec::new()
 }
 
@@ -818,7 +812,7 @@ async fn execute_action(
             }
         }
         HotkeyAction::Screenshot => {
-            // Take screenshot - placeholder for now
+            // TODO: Implement screenshot capture functionality
             info!("Screenshot hotkey triggered");
             Ok(serde_json::json!({
                 "status": "captured",
@@ -826,7 +820,7 @@ async fn execute_action(
             }))
         }
         HotkeyAction::ToggleCamera => {
-            // Toggle camera - placeholder for now
+            // TODO: Implement camera toggle functionality
             info!("Toggle camera hotkey triggered");
             Ok(serde_json::json!({
                 "status": "toggled",
@@ -834,7 +828,7 @@ async fn execute_action(
             }))
         }
         HotkeyAction::ToggleMicrophone => {
-            // Toggle microphone - placeholder for now
+            // TODO: Implement microphone toggle functionality
             info!("Toggle microphone hotkey triggered");
             Ok(serde_json::json!({
                 "status": "toggled",
@@ -842,7 +836,7 @@ async fn execute_action(
             }))
         }
         HotkeyAction::VolumeUp => {
-            // Volume up - placeholder for now
+            // TODO: Implement volume up functionality
             info!("Volume up hotkey triggered");
             Ok(serde_json::json!({
                 "status": "adjusted",
@@ -850,7 +844,7 @@ async fn execute_action(
             }))
         }
         HotkeyAction::VolumeDown => {
-            // Volume down - placeholder for now
+            // TODO: Implement volume down functionality
             info!("Volume down hotkey triggered");
             Ok(serde_json::json!({
                 "status": "adjusted",
@@ -858,7 +852,7 @@ async fn execute_action(
             }))
         }
         HotkeyAction::Settings => {
-            // Open settings window or focus existing one
+            // TODO: Implement settings window focus/open
             info!("Settings hotkey triggered");
             Ok(serde_json::json!({
                 "status": "opened",
@@ -969,21 +963,9 @@ pub async fn register_default_hotkeys(app: &AppHandle) -> Result<()> {
 pub fn setup_global_hotkey_listener(app: AppHandle) -> Result<()> {
     info!("Setting up global hotkey event listener");
 
-    // In a real implementation, you would set up an event loop to listen for global hotkey events
-    // and trigger the appropriate actions when they are pressed
-
-    // For now, this is a placeholder that demonstrates where the event listener would be set up
+    // TODO: Implement global hotkey event listener using global-hotkey crate
     tokio::spawn(async move {
-        // This would be replaced with actual global hotkey event handling
-        // using the global-hotkey crate's event listener
         info!("Global hotkey event listener started");
-
-        // Example of how you might handle events:
-        // let mut global_manager = GlobalHotkeyManager::new()?;
-        // global_manager.event_loop(|hotkey| {
-        //     // Find the hotkey in our registry and execute its action
-        //     info!("Global hotkey triggered: {:?}", hotkey);
-        // });
     });
 
     Ok(())
