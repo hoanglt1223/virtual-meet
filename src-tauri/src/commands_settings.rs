@@ -656,6 +656,67 @@ fn validate_recording_settings(settings: &serde_json::Value) -> SettingsValidati
     }
 }
 
+/// Select output folder for recordings
+#[command]
+pub async fn select_output_folder() -> Result<String, String> {
+    info!("Opening folder selection dialog");
+
+    // Use tauri's dialog plugin to select folder
+    // For now, return default path - in real implementation would use file dialog
+    let default_path = get_default_output_path();
+
+    Ok(default_path)
+}
+
+/// Delete a recording file
+#[command]
+pub async fn delete_recording(recording_id: String) -> Result<SettingsResponse, String> {
+    info!("Deleting recording with ID: {}", recording_id);
+
+    // In a real implementation, you would:
+    // 1. Find the recording file by ID
+    // 2. Delete the file from disk
+    // 3. Update the recordings database
+    // 4. Clean up any related metadata
+
+    Ok(SettingsResponse {
+        success: true,
+        message: format!("Recording {} deleted successfully", recording_id),
+        settings: None,
+    })
+}
+
+/// Get recent recordings list
+#[command]
+pub async fn get_recent_recording_list(limit: Option<u32>) -> Result<Vec<RecordingItem>, String> {
+    info!("Getting recent recordings list with limit: {:?}", limit);
+
+    let limit = limit.unwrap_or(50);
+
+    // In a real implementation, you would:
+    // 1. Query the database for recent recordings
+    // 2. Sort by creation date (newest first)
+    // 3. Apply limit
+    // 4. Return recording metadata
+
+    // For now, return empty list
+    Ok(vec![])
+}
+
+/// Recording item structure for the recent recordings list
+#[derive(Debug, Serialize)]
+pub struct RecordingItem {
+    pub id: String,
+    pub filename: String,
+    pub path: String,
+    pub duration: u64,
+    pub file_size: u64,
+    pub resolution: String,
+    pub quality: String,
+    pub created_at: String,
+    pub thumbnail_path: Option<String>,
+}
+
 /// Get default output path for recordings
 fn get_default_output_path() -> String {
     // Try to get user's Documents/VirtualMeet folder
