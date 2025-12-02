@@ -1,0 +1,226 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Rust backend checks
+  rust-checks:
+    name: Rust Checks
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+
+    - name: Run tests
+      run: cargo test --verbose
+
+  # Frontend checks
+  frontend-checks:
+    name: Frontend Checks
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'pnpm'
+
+    - name: Install pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 9.0.0
+
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+
+    - name: Run ESLint
+      run: pnpm lint
+
+    - name: Run TypeScript type check
+      run: pnpm type-check
+
+    - name: Build frontend
+      run: pnpm build
+
+  # Tauri build (only on main/develop pushes)
+  tauri-build:
+    name: Tauri Build
+    runs-on: windows-latest
+    needs: [rust-checks, frontend-checks]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+
+    strategy:
+      matrix:
+        platform:
+          - x86_64-pc-windows-msvc
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'pnpm'
+
+    - name: Install pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 9.0.0
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.platform }}
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-${{ matrix.platform }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ matrix.platform }}-cargo-
+
+    - name: Install frontend dependencies
+      run: pnpm install --frozen-lockfile
+
+    - name: Install system dependencies (Windows)
+      if: matrix.platform == 'x86_64-pc-windows-msvc'
+      run: |
+        choco install -y llvm
+        echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+
+    - name: Build Tauri app
+      run: pnpm tauri:build
+      env:
+        TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+        TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: VirtualMeet-${{ matrix.platform }}
+        path: |
+          src-tauri/target/release/bundle/nsis/VirtualMeet_*.exe
+          src-tauri/target/release/VirtualMeet.exe
+        retention-days: 30
+
+  # Security audit
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'pnpm'
+
+    - name: Install pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 9.0.0
+
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+
+    - name: Audit npm dependencies
+      run: pnpm audit --audit-level moderate
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install cargo-audit
+      run: cargo install cargo-audit
+
+    - name: Audit Rust dependencies
+      run: cargo audit
+
+  # Dependency update check
+  dependency-check:
+    name: Dependency Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.dependency_check == 'true')
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'pnpm'
+
+    - name: Install pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 9.0.0
+
+    - name: Check for outdated npm dependencies
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm outdated || echo "Some dependencies are outdated"
+
+    - name: Check for outdated Rust dependencies
+      uses: EmbarkStudios/cargo-deny-action@v1
+
+  # Workflow notification
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [rust-checks, frontend-checks]
+    if: always() && (github.event_name == 'push' || github.event_name == 'pull_request')
+
+    steps:
+    - name: Notify on success
+      if: ${{ needs.rust-checks.result == 'success' && needs.frontend-checks.result == 'success' }}
+      run: echo "✅ All checks passed successfully!"
+
+    - name: Notify on failure
+      if: ${{ needs.rust-checks.result == 'failure' || needs.frontend-checks.result == 'failure' }}
+      run: |
+        echo "❌ Some checks failed!"
+        exit 1
