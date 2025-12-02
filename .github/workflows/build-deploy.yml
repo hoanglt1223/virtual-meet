@@ -38,10 +38,10 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install dependencies and fix vulnerabilities
-        run: |
-          pnpm audit --audit-level moderate || echo "Vulnerabilities found, proceeding with build"
-          pnpm outdated || echo "Dependencies checked"
+      # - name: Install dependencies and fix vulnerabilities
+      #   run: |
+      #     pnpm audit --audit-level moderate || echo "Vulnerabilities found, proceeding with build"
+      #     pnpm outdated || echo "Dependencies checked"
 
       - name: Run TypeScript type check
         run: pnpm type-check
