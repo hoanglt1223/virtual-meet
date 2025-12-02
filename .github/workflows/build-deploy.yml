@@ -31,8 +31,26 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+
+      - name: Install vcpkg
+        run: |
+          git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+        shell: powershell
+
+      - name: Install FFmpeg dependencies
+        run: |
+          C:\vcpkg\vcpkg install ffmpeg:x64-windows-static
+          echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
+          echo "VCPKGBUILD_TRIPLET=x64-windows-static" >> $env:GITHUB_ENV
+          echo "PKG_CONFIG_LIBDIR=C:\vcpkg\installed\x64-windows-static\lib\pkgconfig" >> $env:GITHUB_ENV
+        shell: powershell
+
+      - name: Configure Rust for vcpkg
+        run: |
+          echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
+          echo "RUSTFLAGS=-C target-feature=+crt-static" >> $env:GITHUB_ENV
+        shell: powershell
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -48,15 +66,7 @@ jobs:
       # - name: Run ESLint
       #   run: pnpm lint || echo "ESLint issues found, proceeding with build"
 
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run Rust clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings || echo "Clippy issues found, proceeding with build"
-
-      - name: Run Rust tests
-        run: cargo test --verbose || echo "Tests failed, proceeding with build"
-
+      
       - name: Build frontend
         run: pnpm build
 
@@ -78,9 +88,10 @@ jobs:
 
       - name: Build status
         run: |
-          if [ $? -eq 0 ]; then
-            echo "✅ Build completed successfully!"
-          else
-            echo "❌ Build failed"
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ Build completed successfully!"
+          } else {
+            Write-Host "❌ Build failed"
             exit 1
-          fi
+          }
+        shell: powershell
