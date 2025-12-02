@@ -152,24 +152,23 @@ jobs:
           # Create pkg-config file for FFmpeg to help Rust find it
           New-Item -ItemType Directory -Force -Path "C:\ffmpeg\lib\pkgconfig"
 
-          $pkgConfig = @"
-prefix=C:/ffmpeg
-exec_prefix=${prefix}
-libdir=${prefix}/lib
-includedir=${prefix}/include
+          # Write pkg-config content using escaped format
+          $pkgConfigContent = "prefix=C:/ffmpeg`n"
+          $pkgConfigContent += "exec_prefix=`${prefix}`n"
+          $pkgConfigContent += "libdir=`${prefix}/lib`n"
+          $pkgConfigContent += "includedir=`${prefix}/include`n"
+          $pkgConfigContent += "`n"
+          $pkgConfigContent += "Name: FFmpeg`n"
+          $pkgConfigContent += "Description: FFmpeg multimedia library`n"
+          $pkgConfigContent += "Version: 6.0`n"
+          $pkgConfigContent += "`n"
+          $pkgConfigContent += "Requires:`n"
+          $pkgConfigContent += "Libs: -L`${libdir} -lavcodec -lavformat -lavutil -lswscale -lswresample`n"
+          $pkgConfigContent += "Cflags: -I`${includedir}`n"
 
-Name: FFmpeg
-Description: FFmpeg multimedia library
-Version: 6.0
-
-Requires:
-Libs: -L${libdir} -lavcodec -lavformat -lavutil -lswscale -lswresample
-Cflags: -I${includedir}
-"@
-
-          $pkgConfig | Out-File -FilePath "C:\ffmpeg\lib\pkgconfig\libavcodec.pc" -Encoding UTF8
-          $pkgConfig | Out-File -FilePath "C:\ffmpeg\lib\pkgconfig\libavformat.pc" -Encoding UTF8
-          $pkgConfig | Out-File -FilePath "C:\ffmpeg\lib\pkgconfig\libavutil.pc" -Encoding UTF8
+          $pkgConfigContent | Out-File -FilePath "C:\ffmpeg\lib\pkgconfig\libavcodec.pc" -Encoding UTF8 -NoNewline
+          $pkgConfigContent | Out-File -FilePath "C:\ffmpeg\lib\pkgconfig\libavformat.pc" -Encoding UTF8 -NoNewline
+          $pkgConfigContent | Out-File -FilePath "C:\ffmpeg\lib\pkgconfig\libavutil.pc" -Encoding UTF8 -NoNewline
 
           echo "PKG_CONFIG_PATH=C:\ffmpeg\lib\pkgconfig" >> $env:GITHUB_ENV
         shell: powershell

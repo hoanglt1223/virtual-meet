@@ -2628,4 +2628,44 @@ The optimized pipeline includes:
 - Updated this `todo.md` file with optimization details and performance metrics
 - **Parallel**: Both jobs start simultaneously on push/PR to main/develop branches
 - **Independent**: No job dependencies for maximum speed and flexibility
+
 **Repository Security**: ✅ **FULLY SANITIZED AND HARDENED**
+
+---
+
+## ✅ Phase 11: YAML Syntax Fix in build-deploy.yml
+
+- **[COMPLETED]** Fix YAML syntax error on line 156
+  - **Issue**: PowerShell here-string syntax (`@"..."@`) was incompatible with GitHub Actions YAML parser
+  - **Root Cause**: The `${prefix}` variables in pkg-config file content were being misinterpreted by YAML
+  - **Solution**: Replaced PowerShell here-string with explicit string concatenation using backtick escapes
+  - **Date Fixed**: 2025-12-02
+
+### Technical Details
+
+**Before (Invalid YAML)**:
+```powershell
+$pkgConfig = @"
+prefix=C:/ffmpeg
+exec_prefix=${prefix}
+libdir=${prefix}/lib
+...
+"@
+```
+
+**After (Valid YAML)**:
+```powershell
+$pkgConfigContent = "prefix=C:/ffmpeg`n"
+$pkgConfigContent += "exec_prefix=`${prefix}`n"
+$pkgConfigContent += "libdir=`${prefix}/lib`n"
+...
+```
+
+### Fix Summary
+- Replaced multi-line here-string with explicit string building
+- Properly escaped `${prefix}` as `` `${prefix} `` for PowerShell
+- Used backtick-n (`` `n ``) for newlines instead of literal line breaks
+- Added `-NoNewline` to Out-File for clean pkg-config output
+
+**Status**: ✅ **FIXED**
+**File Modified**: `.github/workflows/build-deploy.yml`
