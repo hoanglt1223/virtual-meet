@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,6 +85,13 @@ export default function EnhancedMediaLibrary() {
   const [scanProgress, setScanProgress] = useState<ScanProgress>({ phase: "idle", message: "" });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  const [focusedFile, setFocusedFile] = useState<string | null>(null);
+
+  // Refs for keyboard navigation
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const mediaGridRef = useRef<HTMLDivElement>(null);
+  const fileItemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   // Load library status on component mount
   useEffect(() => {
@@ -112,6 +119,133 @@ export default function EnhancedMediaLibrary() {
 
     setFilteredFiles(filtered);
   }, [mediaFiles, searchTerm, selectedType]);
+
+  // Reset selected index when filtered files change
+  useEffect(() => {
+    setSelectedIndex(-1);
+    setFocusedFile(null);
+    fileItemRefs.current = [];
+  }, [filteredFiles]);
+
+  // Keyboard navigation
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    // Ignore if user is typing in search input
+    if (event.target === searchInputRef.current) {
+      if (event.key === 'Escape') {
+        searchInputRef.current?.blur();
+        mediaGridRef.current?.focus();
+      }
+      return;
+    }
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        setSelectedIndex(prev => {
+          const newIndex = Math.min(prev + 1, filteredFiles.length - 1);
+          if (newIndex >= 0) {
+            fileItemRefs.current[newIndex]?.focus();
+            setFocusedFile(filteredFiles[newIndex]?.path || null);
+          }
+          return newIndex;
+        });
+        break;
+
+      case 'ArrowUp':
+        event.preventDefault();
+        setSelectedIndex(prev => {
+          const newIndex = Math.max(prev - 1, 0);
+          if (newIndex >= 0) {
+            fileItemRefs.current[newIndex]?.focus();
+            setFocusedFile(filteredFiles[newIndex]?.path || null);
+          }
+          return newIndex;
+        });
+        break;
+
+      case 'ArrowRight':
+        event.preventDefault();
+        if (filteredFiles.length > 0) {
+          const cols = window.innerWidth >= 1024 ? 4 : window.innerWidth >= 768 ? 3 : 1;
+          setSelectedIndex(prev => {
+            const newIndex = Math.min(prev + cols, filteredFiles.length - 1);
+            if (newIndex >= 0) {
+              fileItemRefs.current[newIndex]?.focus();
+              setFocusedFile(filteredFiles[newIndex]?.path || null);
+            }
+            return newIndex;
+          });
+        }
+        break;
+
+      case 'ArrowLeft':
+        event.preventDefault();
+        if (filteredFiles.length > 0) {
+          const cols = window.innerWidth >= 1024 ? 4 : window.innerWidth >= 768 ? 3 : 1;
+          setSelectedIndex(prev => {
+            const newIndex = Math.max(prev - cols, 0);
+            if (newIndex >= 0) {
+              fileItemRefs.current[newIndex]?.focus();
+              setFocusedFile(filteredFiles[newIndex]?.path || null);
+            }
+            return newIndex;
+          });
+        }
+        break;
+
+      case 'Enter':
+        if (selectedIndex >= 0 && selectedIndex < filteredFiles.length) {
+          const file = filteredFiles[selectedIndex];
+          if (file.file_type === "Video" || file.file_type === "Audio") {
+            setAsCurrentMedia(file, file.file_type.toLowerCase() as "video" | "audio");
+          }
+        }
+        break;
+
+      case '/':
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        break;
+
+      case 'Escape':
+        setSelectedIndex(-1);
+        setFocusedFile(null);
+        mediaGridRef.current?.focus();
+        break;
+
+      case 'a':
+      case 'A':
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          setSelectedType("all");
+        }
+        break;
+
+      case 'v':
+      case 'V':
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          setSelectedType("video");
+        }
+        break;
+
+      case 'l':
+      case 'L':
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          setSelectedType("audio");
+        }
+        break;
+    }
+  }, [filteredFiles, selectedIndex]);
+
+  // Setup keyboard event listeners
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleKeyDown]);
 
   const loadLibraryStatus = async () => {
     try {
@@ -346,15 +480,37 @@ export default function EnhancedMediaLibrary() {
         </Alert>
       )}
 
+      {/* Keyboard Shortcuts Help */}
+      <Card className="border-dashed">
+        <CardHeader>
+          <CardTitle className="text-sm">Keyboard Shortcuts</CardTitle>
+        </CardHeader>
+        <CardContent className="text-xs space-y-1 text-muted-foreground">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+            <div><kbd className="px-1 py-0.5 bg-muted rounded">↑↓←→</kbd> Navigate</div>
+            <div><kbd className="px-1 py-0.5 bg-muted rounded">Enter</kbd> Select file</div>
+            <div><kbd className="px-1 py-0.5 bg-muted rounded">/</kbd> Search</div>
+            <div><kbd className="px-1 py-0.5 bg-muted rounded">Esc</kbd> Clear focus</div>
+            <div><kbd className="px-1 py-0.5 bg-muted rounded">Ctrl+A</kbd> All files</div>
+            <div><kbd className="px-1 py-0.5 bg-muted rounded">Ctrl+V</kbd> Videos</div>
+            <div><kbd className="px-1 py-0.5 bg-muted rounded">Ctrl+L</kbd> Audio</div>
+            <div><kbd className="px-1 py-0.5 bg-muted rounded">Space</kbd> Play/Pause</div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Search and Filter Bar */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
           <Input
-            placeholder="Search media files..."
+            ref={searchInputRef}
+            placeholder="Search media files... (Press / to focus)"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
+            aria-label="Search media files"
+            autoComplete="off"
           />
         </div>
 
@@ -420,11 +576,32 @@ export default function EnhancedMediaLibrary() {
               </Button>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
+            <div
+              ref={mediaGridRef}
+              className="grid gap-4 md:grid-cols-3 lg:grid-cols-4"
+              role="grid"
+              aria-label="Media files"
+              tabIndex={0}
+            >
               {filteredFiles.map((file, index) => (
                 <div
                   key={`${file.path}-${index}`}
-                  className="border rounded-lg overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                  ref={el => fileItemRefs.current[index] = el}
+                  className={`border rounded-lg overflow-hidden hover:shadow-md transition-shadow cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    focusedFile === file.path ? 'ring-2 ring-blue-500' : ''
+                  }`}
+                  role="gridcell"
+                  tabIndex={selectedIndex === index ? 0 : -1}
+                  aria-selected={selectedIndex === index}
+                  aria-label={`${file.file_type} file: ${file.name}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      if (file.file_type === "Video" || file.file_type === "Audio") {
+                        setAsCurrentMedia(file, file.file_type.toLowerCase() as "video" | "audio");
+                      }
+                    }
+                  }}
                 >
                   <div className="aspect-video bg-muted flex items-center justify-center relative">
                     {file.thumbnail_path ? (

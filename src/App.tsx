@@ -1,6 +1,6 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Dashboard from "@/components/Dashboard";
-import MediaLibrary from "@/components/MediaLibrary";
+import MediaLibrary from "@/components/EnhancedMediaLibrary";
 import Recording from "@/components/Recording";
 import Settings from "@/components/Settings";
 
