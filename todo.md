@@ -2669,3 +2669,26 @@ $pkgConfigContent += "libdir=`${prefix}/lib`n"
 
 **Status**: ✅ **FIXED**
 **File Modified**: `.github/workflows/build-deploy.yml`
+
+---
+
+## 🔧 Unimplemented Features (Code Review 2025-12-02)
+
+### Backend (Rust)
+- `start_audio_streaming()` / `stop_audio_streaming()` - requires AppState refactoring
+- `search_media_library()` - empty results, use enhanced version
+- `validate_media_file()` - always returns valid=true
+- `set_current_video()` / `set_current_audio()` - validates but doesn't load into pipeline
+- `register_hotkey()` / `unregister_hotkey()` - no OS-level registration
+- `setup_global_hotkey_listener()` - no actual event listening
+- `execute_action()` - Screenshot, ToggleCamera, ToggleMicrophone, VolumeUp/Down are stubs
+- `check_key_combination_conflicts()` - always returns empty
+
+### Frontend (React)
+- `Dashboard.tsx` - Quick Action buttons have no onClick handlers
+- `MediaLibrary.tsx` - uses empty mock data, Add Folder button has no handler
+- `HotkeyManager.tsx` - Edit/Delete/Add Custom Hotkey buttons have no handlers
+
+### Virtual Devices
+- `webcam.rs` - DirectShow filter creation and frame delivery not implemented
+- `microphone.rs` - WASAPI virtual device creation not implemented

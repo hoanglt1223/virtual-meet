@@ -353,9 +353,7 @@ pub async fn start_audio_streaming(
 ) -> Result<VideoResponse, String> {
     info!("Starting audio streaming from: {}", request.path);
 
-    // Note: We need to clone the Arc to get a mutable reference
-    // This is a limitation of the current architecture and should be refactored
-    // In a production system, you'd use interior mutability or a different pattern
+    // TODO: Implement audio streaming - requires refactoring AppState for interior mutability
 
     Ok(VideoResponse {
         success: false,
@@ -369,6 +367,8 @@ pub async fn start_audio_streaming(
 #[tauri::command]
 pub async fn stop_audio_streaming(state: State<'_, AppState>) -> Result<VideoResponse, String> {
     info!("Stopping audio streaming");
+
+    // TODO: Implement stop audio streaming - requires refactoring AppState for interior mutability
 
     Ok(VideoResponse {
         success: false,

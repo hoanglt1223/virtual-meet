@@ -298,7 +298,7 @@ pub async fn set_current_video(
         Ok(result) => {
             if result.is_valid && result.can_decode {
                 info!("Video file validated successfully: {}", video_path);
-                // In a real implementation, you would load this into the pipeline
+                // TODO: Load video into VirtualWebcam streaming pipeline
             }
             Ok(result)
         }
@@ -340,7 +340,7 @@ pub async fn set_current_audio(
         Ok(result) => {
             if result.is_valid && result.can_decode {
                 info!("Audio file validated successfully: {}", audio_path);
-                // In a real implementation, you would load this into the pipeline
+                // TODO: Load audio into VirtualMicrophone streaming pipeline
             }
             Ok(result)
         }
@@ -419,9 +419,8 @@ pub async fn search_media_library(
 
     let start_time = std::time::Instant::now();
 
-    // This is a placeholder implementation
-    // In a real implementation, you would search through the loaded media library
-    let results = Vec::new(); // Placeholder
+    // TODO: Implement full-text search - use search_media_library_enhanced() as reference
+    let results = Vec::new();
 
     Ok(MediaSearchResponse {
         success: true,
@@ -640,8 +639,7 @@ async fn validate_media_file(
     file_path: &str,
     expected_type: MediaType,
 ) -> Result<MediaValidationResult> {
-    // This is a placeholder implementation
-    // In a real implementation, you would use FFmpeg or other libraries to validate the file
+    // TODO: Implement actual media validation using FFmpeg probe
 
     Ok(MediaValidationResult {
         is_valid: true,
