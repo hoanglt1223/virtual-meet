@@ -128,6 +128,11 @@ dist
 src-tauri/target/
 src-tauri/Cargo.lock
 
+# Tauri signing keys (CRITICAL SECURITY - NEVER COMMIT!)
+.tauri-keys.key
+*.tauri-keys.key
+*.tauri-keys.key.pub
+
 # IDE and editor files
 .vscode/
 .idea/
