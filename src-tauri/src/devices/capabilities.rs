@@ -5,9 +5,8 @@
 //! and advanced feature detection.
 
 use anyhow::{anyhow, Result};
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
-use tracing::{debug, error, info, warn};
+use std::time::Duration;
+use tracing::{info, warn};
 
 use crate::devices::{DeviceCapabilities, DeviceType};
 
@@ -38,7 +37,6 @@ impl Default for CapabilityDetectionConfig {
 /// Device capability detector
 pub struct DeviceCapabilityDetector {
     config: CapabilityDetectionConfig,
-    capability_cache: HashMap<String, (DeviceCapabilities, Instant)>,
     audio_format_database: AudioFormatDatabase,
     video_format_database: VideoFormatDatabase,
 }
@@ -53,26 +51,14 @@ impl DeviceCapabilityDetector {
     pub fn with_config(config: CapabilityDetectionConfig) -> Self {
         Self {
             config,
-            capability_cache: HashMap::new(),
             audio_format_database: AudioFormatDatabase::new(),
             video_format_database: VideoFormatDatabase::new(),
         }
     }
 
     /// Detect capabilities for a device by ID
-    pub async fn detect_capabilities(&mut self, device_id: &str) -> Result<DeviceCapabilities> {
+    pub async fn detect_capabilities(&self, device_id: &str) -> Result<DeviceCapabilities> {
         info!("Detecting capabilities for device: {}", device_id);
-
-        // Check cache first if enabled
-        if self.config.enable_caching {
-            if let Some((cached_capabilities, timestamp)) = self.capability_cache.get(device_id) {
-                // Cache entries are valid for 1 hour
-                if timestamp.elapsed() < Duration::from_secs(3600) {
-                    info!("Returning cached capabilities for device: {}", device_id);
-                    return Ok(cached_capabilities.clone());
-                }
-            }
-        }
 
         // Determine device type from ID
         let device_type = self.determine_device_type(device_id)?;
@@ -81,14 +67,6 @@ impl DeviceCapabilityDetector {
             DeviceType::Audio => self.detect_audio_capabilities(device_id).await?,
             DeviceType::Video => self.detect_video_capabilities(device_id).await?,
         };
-
-        // Cache the result if enabled
-        if self.config.enable_caching {
-            self.capability_cache.insert(
-                device_id.to_string(),
-                (capabilities.clone(), Instant::now()),
-            );
-        }
 
         Ok(capabilities)
     }
@@ -513,27 +491,6 @@ impl DeviceCapabilityDetector {
         Ok(flags)
     }
 
-    /// Clear the capability cache
-    pub fn clear_cache(&mut self) {
-        self.capability_cache.clear();
-        info!("Capability cache cleared");
-    }
-
-    /// Get cache statistics
-    pub fn get_cache_stats(&self) -> CacheStats {
-        let total_entries = self.capability_cache.len();
-        let expired_entries = self
-            .capability_cache
-            .values()
-            .filter(|(_, timestamp)| timestamp.elapsed() >= Duration::from_secs(3600))
-            .count();
-
-        CacheStats {
-            total_entries,
-            valid_entries: total_entries - expired_entries,
-            expired_entries,
-        }
-    }
 }
 
 impl Default for DeviceCapabilityDetector {
@@ -542,26 +499,15 @@ impl Default for DeviceCapabilityDetector {
     }
 }
 
-/// Cache statistics
-#[derive(Debug, Clone)]
-pub struct CacheStats {
-    /// Total number of cache entries
-    pub total_entries: usize,
-    /// Number of valid (non-expired) entries
-    pub valid_entries: usize,
-    /// Number of expired entries
-    pub expired_entries: usize,
-}
-
 /// Audio format database with known format information
 pub struct AudioFormatDatabase {
-    formats: HashMap<String, AudioFormatInfo>,
+    formats: std::collections::HashMap<String, AudioFormatInfo>,
 }
 
 impl AudioFormatDatabase {
     /// Create a new audio format database
     pub fn new() -> Self {
-        let mut formats = HashMap::new();
+        let mut formats = std::collections::HashMap::new();
 
         // Common audio formats
         formats.insert(
@@ -661,13 +607,13 @@ pub struct AudioFormatInfo {
 
 /// Video format database with known format information
 pub struct VideoFormatDatabase {
-    formats: HashMap<String, VideoFormatInfo>,
+    formats: std::collections::HashMap<String, VideoFormatInfo>,
 }
 
 impl VideoFormatDatabase {
     /// Create a new video format database
     pub fn new() -> Self {
-        let mut formats = HashMap::new();
+        let mut formats = std::collections::HashMap::new();
 
         // Common video formats
         formats.insert(
@@ -791,8 +737,8 @@ mod tests {
     #[tokio::test]
     async fn test_device_capability_detector_creation() {
         let detector = DeviceCapabilityDetector::new();
-        let stats = detector.get_cache_stats();
-        assert_eq!(stats.total_entries, 0);
+        // Just verify it can be created
+        assert_eq!(detector.config.max_formats_to_test, 50);
     }
 
     #[tokio::test]
@@ -800,13 +746,13 @@ mod tests {
         let detector = DeviceCapabilityDetector::new();
 
         assert_eq!(
-            detector.determine_device_type("wasapi-audio-device-123"),
-            Ok(DeviceType::Audio)
+            detector.determine_device_type("wasapi-audio-device-123").unwrap(),
+            DeviceType::Audio
         );
 
         assert_eq!(
-            detector.determine_device_type("dshow-video-camera-456"),
-            Ok(DeviceType::Video)
+            detector.determine_device_type("dshow-video-camera-456").unwrap(),
+            DeviceType::Video
         );
     }
 

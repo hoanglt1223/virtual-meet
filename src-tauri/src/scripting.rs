@@ -11,8 +11,16 @@ use tracing::{debug, error, info, warn};
 /// Script execution engine
 pub struct ScriptEngine {
     engine: Engine,
-    global_scope: Scope,
+    global_scope: Scope<'static>,
     scripts: HashMap<String, Script>,
+}
+
+impl std::fmt::Debug for ScriptEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScriptEngine")
+            .field("scripts_count", &self.scripts.len())
+            .finish()
+    }
 }
 
 /// Script definition

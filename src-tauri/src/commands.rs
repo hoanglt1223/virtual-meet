@@ -17,10 +17,9 @@ use crate::devices::{
 };
 use crate::virtual_device::microphone::VirtualMicrophone;
 use crate::virtual_device::webcam::{BufferStatus, VideoInfo, VirtualWebcam};
-use crate::virtual_device::VirtualDeviceState;
 
 // Include virtual device commands
-mod virtual_devices;
+pub mod virtual_devices;
 pub use virtual_devices::*;
 
 /// Shared application state
@@ -278,38 +277,88 @@ pub async fn list_video_devices() -> Result<DevicesResponse, String> {
     }
 }
 
-/// Check if a video file is valid and can be decoded
+/// Check if a video file is valid using ffprobe
 #[tauri::command]
 pub async fn validate_video_file(path: String) -> Result<VideoResponse, String> {
     info!("Validating video file: {}", path);
 
-    // Create a temporary decoder to validate the file
-    let mut decoder = crate::virtual_device::webcam::VideoDecoder::new();
+    if !std::path::Path::new(&path).exists() {
+        return Ok(VideoResponse {
+            success: false,
+            message: format!("File not found: {}", path),
+            video_info: None,
+            buffer_status: None,
+        });
+    }
 
-    match decoder.open(&path) {
-        Ok(()) => {
-            let video_info = VideoInfo {
-                width: decoder.width(),
-                height: decoder.height(),
-                frame_rate: decoder.frame_rate(),
-                duration: decoder.duration(),
-            };
+    let output = std::process::Command::new("ffprobe")
+        .args([
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_streams",
+            "-select_streams", "v:0",
+            &path,
+        ])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output();
 
-            Ok(VideoResponse {
-                success: true,
-                message: format!(
-                    "Video file is valid: {}x{} @ {:.2} FPS",
-                    video_info.width, video_info.height, video_info.frame_rate
-                ),
-                video_info: Some(video_info),
-                buffer_status: None,
-            })
+    match output {
+        Ok(out) => {
+            let json_str = String::from_utf8_lossy(&out.stdout);
+            match serde_json::from_str::<serde_json::Value>(&json_str) {
+                Ok(json) => {
+                    let stream = json["streams"].as_array().and_then(|s| s.first());
+                    if let Some(stream) = stream {
+                        let width = stream["width"].as_u64().unwrap_or(0) as u32;
+                        let height = stream["height"].as_u64().unwrap_or(0) as u32;
+                        let frame_rate = stream["r_frame_rate"].as_str()
+                            .map(|s| {
+                                if let Some((n, d)) = s.split_once('/') {
+                                    let nv: f64 = n.parse().unwrap_or(30.0);
+                                    let dv: f64 = d.parse().unwrap_or(1.0);
+                                    if dv > 0.0 { nv / dv } else { 30.0 }
+                                } else {
+                                    s.parse().unwrap_or(30.0)
+                                }
+                            })
+                            .unwrap_or(30.0);
+                        let duration = stream["duration"].as_str()
+                            .and_then(|s| s.parse::<f64>().ok())
+                            .map(std::time::Duration::from_secs_f64);
+
+                        let video_info = VideoInfo { width, height, frame_rate, duration };
+                        Ok(VideoResponse {
+                            success: true,
+                            message: format!(
+                                "Video file is valid: {}x{} @ {:.2} FPS",
+                                width, height, frame_rate
+                            ),
+                            video_info: Some(video_info),
+                            buffer_status: None,
+                        })
+                    } else {
+                        Ok(VideoResponse {
+                            success: false,
+                            message: "No video stream found in file".to_string(),
+                            video_info: None,
+                            buffer_status: None,
+                        })
+                    }
+                }
+                Err(e) => Ok(VideoResponse {
+                    success: false,
+                    message: format!("Failed to parse ffprobe output: {}", e),
+                    video_info: None,
+                    buffer_status: None,
+                }),
+            }
         }
         Err(e) => {
-            error!("Failed to validate video file: {}", e);
+            error!("ffprobe failed: {}", e);
             Ok(VideoResponse {
                 success: false,
-                message: format!("Invalid video file: {}", e),
+                message: format!("ffprobe not available or failed: {}", e),
                 video_info: None,
                 buffer_status: None,
             })
@@ -352,30 +401,46 @@ pub async fn start_audio_streaming(
     state: State<'_, AppState>,
 ) -> Result<VideoResponse, String> {
     info!("Starting audio streaming from: {}", request.path);
-
-    // Note: We need to clone the Arc to get a mutable reference
-    // This is a limitation of the current architecture and should be refactored
-    // In a production system, you'd use interior mutability or a different pattern
-
-    Ok(VideoResponse {
-        success: false,
-        message: "Audio streaming requires mutable state access - not implemented in this command structure".to_string(),
-        video_info: None,
-        buffer_status: None,
-    })
+    match state.microphone.start_streaming(&request.path).await {
+        Ok(()) => Ok(VideoResponse {
+            success: true,
+            message: format!("Started audio streaming from: {}", request.path),
+            video_info: None,
+            buffer_status: None,
+        }),
+        Err(e) => {
+            error!("Failed to start audio streaming: {}", e);
+            Ok(VideoResponse {
+                success: false,
+                message: format!("Failed to start audio streaming: {}", e),
+                video_info: None,
+                buffer_status: None,
+            })
+        }
+    }
 }
 
 /// Stop audio streaming
 #[tauri::command]
 pub async fn stop_audio_streaming(state: State<'_, AppState>) -> Result<VideoResponse, String> {
     info!("Stopping audio streaming");
-
-    Ok(VideoResponse {
-        success: false,
-        message: "Audio streaming requires mutable state access - not implemented in this command structure".to_string(),
-        video_info: None,
-        buffer_status: None,
-    })
+    match state.microphone.stop_streaming().await {
+        Ok(()) => Ok(VideoResponse {
+            success: true,
+            message: "Audio streaming stopped".to_string(),
+            video_info: None,
+            buffer_status: None,
+        }),
+        Err(e) => {
+            error!("Failed to stop audio streaming: {}", e);
+            Ok(VideoResponse {
+                success: false,
+                message: format!("Failed to stop audio streaming: {}", e),
+                video_info: None,
+                buffer_status: None,
+            })
+        }
+    }
 }
 
 /// Get microphone status
@@ -384,7 +449,7 @@ pub async fn get_microphone_status(
     state: State<'_, AppState>,
 ) -> Result<AudioStatusResponse, String> {
     let is_active = state.microphone.is_active().await;
-    let current_source = state.microphone.current_source().await;
+    let current_source = state.microphone.current_source();
     let volume = state.microphone.get_volume().await;
     let is_muted = state.microphone.is_muted().await;
     let processing_stats = Some(state.microphone.get_processing_stats().await);
@@ -577,11 +642,12 @@ pub async fn enumerate_all_devices(
                 .filter(|d| d.info.device_type == DeviceType::Video)
                 .count();
 
+            let total_count = devices.len();
             Ok(DeviceEnumerationResponse {
                 success: true,
-                message: format!("Successfully enumerated {} devices", devices.len()),
+                message: format!("Successfully enumerated {} devices", total_count),
                 devices,
-                total_count: devices.len(),
+                total_count,
                 virtual_count,
                 physical_count,
                 audio_count,
@@ -630,14 +696,15 @@ pub async fn enumerate_audio_devices(
             let virtual_count = devices.iter().filter(|d| d.info.is_virtual()).count();
             let physical_count = devices.iter().filter(|d| d.info.is_physical()).count();
 
+            let total_count = devices.len();
             Ok(DeviceEnumerationResponse {
                 success: true,
-                message: format!("Successfully enumerated {} audio devices", devices.len()),
+                message: format!("Successfully enumerated {} audio devices", total_count),
                 devices,
-                total_count: devices.len(),
+                total_count,
                 virtual_count,
                 physical_count,
-                audio_count: devices.len(),
+                audio_count: total_count,
                 video_count: 0,
                 timestamp: enumeration_result.timestamp.to_rfc3339(),
             })
@@ -683,15 +750,16 @@ pub async fn enumerate_video_devices(
             let virtual_count = devices.iter().filter(|d| d.info.is_virtual()).count();
             let physical_count = devices.iter().filter(|d| d.info.is_physical()).count();
 
+            let total_count = devices.len();
             Ok(DeviceEnumerationResponse {
                 success: true,
-                message: format!("Successfully enumerated {} video devices", devices.len()),
+                message: format!("Successfully enumerated {} video devices", total_count),
                 devices,
-                total_count: devices.len(),
+                total_count,
                 virtual_count,
                 physical_count,
                 audio_count: 0,
-                video_count: devices.len(),
+                video_count: total_count,
                 timestamp: enumeration_result.timestamp.to_rfc3339(),
             })
         }
@@ -805,12 +873,13 @@ pub async fn get_virtual_devices(
                 .filter(|d| d.info.device_type == DeviceType::Video)
                 .count();
 
+            let virtual_total = virtual_devices.len();
             Ok(DeviceEnumerationResponse {
                 success: true,
-                message: format!("Found {} virtual devices", virtual_devices.len()),
+                message: format!("Found {} virtual devices", virtual_total),
                 devices: virtual_devices,
-                total_count: virtual_devices.len(),
-                virtual_count: virtual_devices.len(),
+                total_count: virtual_total,
+                virtual_count: virtual_total,
                 physical_count: 0,
                 audio_count,
                 video_count,
@@ -866,13 +935,14 @@ pub async fn get_physical_devices(
                 .filter(|d| d.info.device_type == DeviceType::Video)
                 .count();
 
+            let physical_total = physical_devices.len();
             Ok(DeviceEnumerationResponse {
                 success: true,
-                message: format!("Found {} physical devices", physical_devices.len()),
+                message: format!("Found {} physical devices", physical_total),
                 devices: physical_devices,
-                total_count: physical_devices.len(),
+                total_count: physical_total,
                 virtual_count: 0,
-                physical_count: physical_devices.len(),
+                physical_count: physical_total,
                 audio_count,
                 video_count,
                 timestamp: enumeration_result.timestamp.to_rfc3339(),
@@ -923,11 +993,12 @@ pub async fn refresh_device_list(
                 .filter(|d| d.info.device_type == DeviceType::Video)
                 .count();
 
+            let total_count = devices.len();
             Ok(DeviceEnumerationResponse {
                 success: true,
                 message: "Device list refreshed successfully".to_string(),
                 devices,
-                total_count: devices.len(),
+                total_count,
                 virtual_count,
                 physical_count,
                 audio_count,

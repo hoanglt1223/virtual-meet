@@ -3,6 +3,7 @@ import Dashboard from "@/components/Dashboard";
 import MediaLibrary from "@/components/EnhancedMediaLibrary";
 import Recording from "@/components/Recording";
 import Settings from "@/components/Settings";
+import SetupPanel from "@/components/setup-panel";
 
 function App() {
   return (
@@ -11,11 +12,12 @@ function App() {
         <h1 className="text-3xl font-bold mb-6">VirtualMeet</h1>
 
         <Tabs defaultValue="dashboard" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="media">Media Library</TabsTrigger>
             <TabsTrigger value="recording">Recording</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsTrigger value="setup">Setup</TabsTrigger>
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-4">
@@ -32,6 +34,10 @@ function App() {
 
           <TabsContent value="settings" className="space-y-4">
             <Settings />
+          </TabsContent>
+
+          <TabsContent value="setup" className="space-y-4">
+            <SetupPanel />
           </TabsContent>
         </Tabs>
       </div>

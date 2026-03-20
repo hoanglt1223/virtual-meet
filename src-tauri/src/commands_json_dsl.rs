@@ -5,7 +5,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tauri::{command, AppHandle, Manager};
 use tracing::{debug, error, info, warn};
 
@@ -79,7 +80,7 @@ pub async fn parse_json_dsl_script(
     info!("Parsing JSON DSL script");
 
     let state = app.state::<JsonDslState>();
-    let engine = state.integrated_engine.lock().unwrap();
+    let engine = state.integrated_engine.lock().await;
 
     match engine.parse_script(&script_content).await {
         Ok(script) => {
@@ -125,7 +126,7 @@ pub async fn save_json_dsl_script(app: AppHandle, script: JsonDslScript) -> Resu
     let state = app.state::<JsonDslState>();
 
     // Validate the script first
-    let engine = state.integrated_engine.lock().unwrap();
+    let engine = state.integrated_engine.lock().await;
     match engine
         .parse_script(&serde_json::to_string(&script).unwrap())
         .await
@@ -140,7 +141,7 @@ pub async fn save_json_dsl_script(app: AppHandle, script: JsonDslScript) -> Resu
             let mut script_with_id = script;
             script_with_id.id = Some(script_id.clone());
 
-            let mut store = state.script_store.lock().unwrap();
+            let mut store = state.script_store.lock().await;
             store.insert(script_id.clone(), script_with_id);
 
             info!("Successfully saved script with ID: {}", script_id);
@@ -159,7 +160,7 @@ pub async fn get_json_dsl_scripts(app: AppHandle) -> Result<Vec<ScriptInfo>, Str
     info!("Retrieving all JSON DSL scripts");
 
     let state = app.state::<JsonDslState>();
-    let store = state.script_store.lock().unwrap();
+    let store = state.script_store.lock().await;
 
     let scripts: Vec<ScriptInfo> = store
         .values()
@@ -198,7 +199,7 @@ pub async fn get_json_dsl_script(
     info!("Retrieving script: {}", script_id);
 
     let state = app.state::<JsonDslState>();
-    let store = state.script_store.lock().unwrap();
+    let store = state.script_store.lock().await;
 
     match store.get(&script_id) {
         Some(script) => {
@@ -218,7 +219,7 @@ pub async fn delete_json_dsl_script(app: AppHandle, script_id: String) -> Result
     info!("Deleting script: {}", script_id);
 
     let state = app.state::<JsonDslState>();
-    let mut store = state.script_store.lock().unwrap();
+    let mut store = state.script_store.lock().await;
 
     match store.remove(&script_id) {
         Some(_) => {
@@ -244,7 +245,7 @@ pub async fn execute_json_dsl_script(
 
     // Get the script from store
     let script = {
-        let store = state.script_store.lock().unwrap();
+        let store = state.script_store.lock().await;
         match store.get(&request.script_id) {
             Some(script) => script.clone(),
             None => {
@@ -266,7 +267,7 @@ pub async fn execute_json_dsl_script(
 
     // Execute the script
     let execution_id = uuid::Uuid::new_v4().to_string();
-    let engine = state.integrated_engine.lock().unwrap();
+    let engine = state.integrated_engine.lock().await;
 
     match engine.execute_script(&script).await {
         Ok(result) => {
@@ -303,7 +304,7 @@ pub async fn execute_json_dsl_content(
     info!("Executing script content directly");
 
     let state = app.state::<JsonDslState>();
-    let engine = state.integrated_engine.lock().unwrap();
+    let engine = state.integrated_engine.lock().await;
 
     // Parse the script first
     let script = match engine.parse_script(&script_content).await {
@@ -336,9 +337,9 @@ pub async fn get_media_status(app: AppHandle) -> Result<MediaStatus, String> {
     info!("Getting media status");
 
     let state = app.state::<JsonDslState>();
-    let engine = state.integrated_engine.lock().unwrap();
+    let engine = state.integrated_engine.lock().await;
 
-    match engine.get_media_status().await {
+    match engine.get_media_status() {
         Ok(status) => {
             debug!(
                 "Media status: {} video streams, {} audio streams, {} recording sessions",
@@ -361,11 +362,11 @@ pub async fn stop_script_execution(app: AppHandle) -> Result<bool, String> {
     info!("Stopping script execution");
 
     let state = app.state::<JsonDslState>();
-    let engine = state.integrated_engine.lock().unwrap();
+    let engine = state.integrated_engine.lock().await;
 
     // Note: This would require adding stop_execution method to IntegratedDslEngine
     // For now, we'll clean up resources
-    match engine.get_media_status().await {
+    match engine.get_media_status() {
         Ok(_) => {
             info!("Script execution stopped successfully");
             Ok(true)
@@ -377,14 +378,14 @@ pub async fn stop_script_execution(app: AppHandle) -> Result<bool, String> {
     }
 }
 
-/// Get script templates
+/// Get DSL script templates
 #[command]
-pub async fn get_script_templates() -> Result<Vec<ScriptTemplate>, String> {
+pub async fn get_dsl_templates() -> Result<Vec<ScriptTemplate>, String> {
     info!("Getting script templates");
 
     let example_scripts = create_example_scripts();
 
-    let templates = example_scripts
+    let templates: Vec<ScriptTemplate> = example_scripts
         .into_iter()
         .enumerate()
         .map(|(index, script)| {
@@ -412,7 +413,7 @@ pub async fn validate_json_dsl_script(
     info!("Validating JSON DSL script");
 
     let state = app.state::<JsonDslState>();
-    let engine = state.integrated_engine.lock().unwrap();
+    let engine = state.integrated_engine.lock().await;
 
     match engine.parse_script(&script_content).await {
         Ok(script) => {
@@ -463,7 +464,7 @@ pub async fn export_json_dsl_script(
     info!("Exporting script {} to {}", script_id, file_path);
 
     let state = app.state::<JsonDslState>();
-    let store = state.script_store.lock().unwrap();
+    let store = state.script_store.lock().await;
 
     match store.get(&script_id) {
         Some(script) => {
@@ -484,7 +485,7 @@ pub async fn export_json_dsl_script(
                 }
                 Err(e) => {
                     error!("Failed to write script to file: {}", e);
-                    Err(format!("Failed to write script to file: {}", e));
+                    Err(format!("Failed to write script to file: {}", e))
                 }
             }
         }
@@ -511,7 +512,7 @@ pub async fn import_json_dsl_script(app: AppHandle, file_path: String) -> Result
 
     // Parse and validate the script
     let state = app.state::<JsonDslState>();
-    let engine = state.integrated_engine.lock().unwrap();
+    let engine = state.integrated_engine.lock().await;
 
     match engine.parse_script(&script_content).await {
         Ok(mut script) => {
@@ -521,7 +522,7 @@ pub async fn import_json_dsl_script(app: AppHandle, file_path: String) -> Result
 
             // Save to store
             drop(engine);
-            let mut store = state.script_store.lock().unwrap();
+            let mut store = state.script_store.lock().await;
             store.insert(script_id.clone(), script);
 
             info!("Successfully imported script with ID: {}", script_id);
@@ -529,7 +530,7 @@ pub async fn import_json_dsl_script(app: AppHandle, file_path: String) -> Result
         }
         Err(e) => {
             error!("Failed to parse imported script: {}", e);
-            Err(format!("Failed to parse imported script: {}", e));
+            Err(format!("Failed to parse imported script: {}", e))
         }
     }
 }

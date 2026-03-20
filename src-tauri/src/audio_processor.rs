@@ -4,7 +4,7 @@
 //! audio effects, and format conversion
 
 use anyhow::{anyhow, Result};
-use std::sync::atomic::{AtomicBool, AtomicF32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
@@ -15,7 +15,7 @@ use crate::audio::{AudioConfig, AudioConverter, AudioFrameData, AudioSampleForma
 pub struct AudioProcessor {
     config: AudioConfig,
     is_muted: Arc<AtomicBool>,
-    volume: Arc<AtomicF32>,
+    volume: Arc<AtomicU32>, // stored as f32 bits
     processed_frames: u64,
     total_samples_processed: u64,
 }
@@ -24,7 +24,7 @@ impl AudioProcessor {
     /// Create a new audio processor with the given configuration
     pub fn new(config: AudioConfig) -> Self {
         Self {
-            volume: Arc::new(AtomicF32::new(config.volume)),
+            volume: Arc::new(AtomicU32::new(config.volume.to_bits())),
             is_muted: Arc::new(AtomicBool::new(config.muted)),
             config,
             processed_frames: 0,
@@ -76,7 +76,7 @@ impl AudioProcessor {
             return Ok(());
         }
 
-        let volume = self.volume.load(Ordering::Relaxed);
+        let volume = f32::from_bits(self.volume.load(Ordering::Relaxed));
         if volume == 1.0 {
             return Ok(()); // No volume change needed
         }
@@ -136,14 +136,14 @@ impl AudioProcessor {
             return Err(anyhow!("Volume must be between 0.0 and 1.0"));
         }
 
-        self.volume.store(volume, Ordering::Relaxed);
+        self.volume.store(volume.to_bits(), Ordering::Relaxed);
         info!("Volume set to: {:.2}", volume);
         Ok(())
     }
 
     /// Get the current volume level
     pub fn get_volume(&self) -> f32 {
-        self.volume.load(Ordering::Relaxed)
+        f32::from_bits(self.volume.load(Ordering::Relaxed))
     }
 
     /// Set mute state
@@ -173,7 +173,7 @@ impl AudioProcessor {
 
     /// Update processor configuration
     pub fn update_config(&mut self, config: AudioConfig) {
-        self.volume.store(config.volume, Ordering::Relaxed);
+        self.volume.store(config.volume.to_bits(), Ordering::Relaxed);
         self.is_muted.store(config.muted, Ordering::Relaxed);
         self.config = config;
         info!("Audio processor configuration updated");
@@ -198,7 +198,7 @@ impl AudioProcessor {
 }
 
 /// Audio processing statistics
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct AudioProcessorStats {
     pub processed_frames: u64,
     pub total_samples_processed: u64,
@@ -247,12 +247,12 @@ impl AudioVisualizer {
         };
 
         let samples_per_channel = samples.len() / self.channel_count;
-        let mut channel_peaks = vec![0.0; self.channel_count];
-        let mut channel_rms = vec![0.0; self.channel_count];
+        let mut channel_peaks = vec![0.0f32; self.channel_count];
+        let mut channel_rms = vec![0.0f32; self.channel_count];
 
         for ch in 0..self.channel_count {
-            let mut sum_sq = 0.0;
-            let mut peak = 0.0;
+            let mut sum_sq = 0.0f32;
+            let mut peak = 0.0f32;
 
             for i in 0..samples_per_channel.min(self.window_size) {
                 let sample = samples[i * self.channel_count + ch].abs();
@@ -290,12 +290,12 @@ impl AudioVisualizer {
         };
 
         let samples_per_channel = samples.len() / self.channel_count;
-        let mut channel_peaks = vec![0.0; self.channel_count];
-        let mut channel_rms = vec![0.0; self.channel_count];
+        let mut channel_peaks = vec![0.0f32; self.channel_count];
+        let mut channel_rms = vec![0.0f32; self.channel_count];
 
         for ch in 0..self.channel_count {
-            let mut sum_sq = 0.0;
-            let mut peak = 0.0;
+            let mut sum_sq = 0.0f32;
+            let mut peak = 0.0f32;
 
             for i in 0..samples_per_channel.min(self.window_size) {
                 let sample = (samples[i * self.channel_count + ch] as f32 / 32768.0).abs();
@@ -349,7 +349,7 @@ impl AudioVisualizer {
 }
 
 /// Audio visualization data
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct AudioVisualizationData {
     pub peak_levels: Vec<f32>,
     pub rms_levels: Vec<f32>,
@@ -422,7 +422,7 @@ mod tests {
         let mut visualizer = AudioVisualizer::new(2, 512);
 
         // Create test audio frame
-        let test_data = vec![0x3f, 0x80, 0x00, 0x00; 1024]; // f32 samples
+        let test_data = [0x3f, 0x80, 0x00, 0x00].repeat(1024); // f32 samples
         let frame = AudioFrameData::new(
             test_data,
             2,
@@ -449,7 +449,7 @@ mod tests {
         let mut processor = AudioProcessor::new(config);
 
         // Create test audio frame
-        let test_data = vec![0x3f, 0x80, 0x00, 0x00; 1024]; // f32 samples with value 1.0
+        let test_data = [0x3f, 0x80, 0x00, 0x00].repeat(1024); // f32 samples with value 1.0
         let frame = AudioFrameData::new(
             test_data,
             2,

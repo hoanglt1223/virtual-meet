@@ -11,6 +11,7 @@ use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
 use symphonia::core::audio::{AudioBufferRef, Signal};
+use symphonia::core::conv::IntoSample;
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::FormatOptions;
@@ -72,7 +73,7 @@ impl AudioDecoder {
         let track_id = track.id;
 
         // Extract metadata
-        self.metadata = self.extract_metadata(track, &format);
+        self.metadata = self.extract_metadata(track);
 
         info!(
             "Audio track loaded: {} channels, {} Hz, codec: {}",
@@ -113,19 +114,20 @@ impl AudioDecoder {
 
         let mut format = probed.format;
 
-        // Find the first audio track
-        let track = format
-            .tracks()
-            .iter()
-            .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
-            .ok_or_else(|| anyhow!("No audio track found in file"))?;
-
-        let track_id = track.id;
+        // Find the first audio track — get needed data then drop the borrow
+        let (track_id, codec_params) = {
+            let track = format
+                .tracks()
+                .iter()
+                .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
+                .ok_or_else(|| anyhow!("No audio track found in file"))?;
+            (track.id, track.codec_params.clone())
+        };
 
         // Create decoder
         let dec_opts: DecoderOptions = Default::default();
         let mut decoder = symphonia::default::get_codecs()
-            .make(&track.codec_params, &dec_opts)
+            .make(&codec_params, &dec_opts)
             .map_err(|e| anyhow!("Failed to create decoder: {}", e))?;
 
         let mut frames = Vec::new();
@@ -163,7 +165,6 @@ impl AudioDecoder {
                 Ok(decoded) => {
                     let audio_frame = self.process_decoded_audio(
                         decoded,
-                        track,
                         frame_number,
                         current_timestamp,
                         buffer_size,
@@ -201,41 +202,40 @@ impl AudioDecoder {
     fn process_decoded_audio(
         &self,
         decoded: AudioBufferRef,
-        track: &symphonia::core::formats::Track,
         frame_number: u64,
         timestamp: Duration,
         buffer_size: usize,
     ) -> Result<Option<AudioFrameData>> {
         match decoded {
             AudioBufferRef::U8(buf) => {
-                self.convert_audio_buffer(buf, track, frame_number, timestamp, buffer_size)
+                self.convert_audio_buffer(&*buf, frame_number, timestamp, buffer_size)
             }
             AudioBufferRef::U16(buf) => {
-                self.convert_audio_buffer(buf, track, frame_number, timestamp, buffer_size)
+                self.convert_audio_buffer(&*buf, frame_number, timestamp, buffer_size)
             }
             AudioBufferRef::U24(buf) => {
-                self.convert_audio_buffer(buf, track, frame_number, timestamp, buffer_size)
+                self.convert_audio_buffer(&*buf, frame_number, timestamp, buffer_size)
             }
             AudioBufferRef::U32(buf) => {
-                self.convert_audio_buffer(buf, track, frame_number, timestamp, buffer_size)
+                self.convert_audio_buffer(&*buf, frame_number, timestamp, buffer_size)
             }
             AudioBufferRef::S8(buf) => {
-                self.convert_audio_buffer(buf, track, frame_number, timestamp, buffer_size)
+                self.convert_audio_buffer(&*buf, frame_number, timestamp, buffer_size)
             }
             AudioBufferRef::S16(buf) => {
-                self.convert_audio_buffer(buf, track, frame_number, timestamp, buffer_size)
+                self.convert_audio_buffer(&*buf, frame_number, timestamp, buffer_size)
             }
             AudioBufferRef::S24(buf) => {
-                self.convert_audio_buffer(buf, track, frame_number, timestamp, buffer_size)
+                self.convert_audio_buffer(&*buf, frame_number, timestamp, buffer_size)
             }
             AudioBufferRef::S32(buf) => {
-                self.convert_audio_buffer(buf, track, frame_number, timestamp, buffer_size)
+                self.convert_audio_buffer(&*buf, frame_number, timestamp, buffer_size)
             }
             AudioBufferRef::F32(buf) => {
-                self.convert_audio_buffer(buf, track, frame_number, timestamp, buffer_size)
+                self.convert_audio_buffer(&*buf, frame_number, timestamp, buffer_size)
             }
             AudioBufferRef::F64(buf) => {
-                self.convert_audio_buffer(buf, track, frame_number, timestamp, buffer_size)
+                self.convert_audio_buffer(&*buf, frame_number, timestamp, buffer_size)
             }
         }
     }
@@ -244,14 +244,13 @@ impl AudioDecoder {
     fn convert_audio_buffer<T>(
         &self,
         buf: &symphonia::core::audio::AudioBuffer<T>,
-        track: &symphonia::core::formats::Track,
         frame_number: u64,
         timestamp: Duration,
-        buffer_size: usize,
+        _buffer_size: usize,
     ) -> Result<Option<AudioFrameData>>
     where
-        T: symphonia::core::sample::Sample,
-        T: symphonia::core::sample::IntoSample<f32>,
+        T: symphonia::core::sample::Sample + Copy,
+        T: IntoSample<f32>,
     {
         if buf.frames() == 0 {
             return Ok(None);
@@ -266,12 +265,11 @@ impl AudioDecoder {
         let mut interleaved = Vec::with_capacity(frames * channels as usize);
 
         for frame_idx in 0..frames {
-            for ch_idx in 0..channels {
-                if let Some(sample) = buf.chans().get(ch_idx as usize) {
-                    if let Some(sample_value) = sample.get(frame_idx) {
-                        let f32_sample = sample_value.into_sample();
-                        interleaved.push(f32_sample);
-                    }
+            for ch_idx in 0..channels as usize {
+                let channel_samples = buf.chan(ch_idx);
+                if let Some(&sample_value) = channel_samples.get(frame_idx) {
+                    let f32_sample: f32 = sample_value.into_sample();
+                    interleaved.push(f32_sample);
                 }
             }
         }
@@ -302,27 +300,13 @@ impl AudioDecoder {
     fn extract_metadata(
         &self,
         track: &symphonia::core::formats::Track,
-        format: &symphonia::core::formats::BoxFormatReader,
     ) -> AudioMetadata {
         let mut metadata = AudioMetadata::new();
 
-        // Get codec parameters
-        if let Some(codec_params) = track.codec_params.as_ref() {
-            metadata.channels = codec_params.channels.map_or(0, |c| c.count() as u32);
-            metadata.sample_rate = codec_params.sample_rate.unwrap_or(0);
-            metadata.bit_rate = codec_params.max_bit_rate;
-
-            if let Some(codec) = codec_params.codec {
-                metadata.codec = format!("{:?}", codec);
-            }
-        }
-
-        // Get format information
-        metadata.format = format.to_string();
-
-        // Try to get duration from the format
-        // Note: This might not be available for all formats
-        // In a full implementation, you'd scan the entire file to calculate duration
+        metadata.channels = track.codec_params.channels.map_or(0, |c| c.count() as u32);
+        metadata.sample_rate = track.codec_params.sample_rate.unwrap_or(0);
+        metadata.bit_rate = None; // CodecParameters has no bit_rate in symphonia 0.5
+        metadata.codec = format!("{:?}", track.codec_params.codec);
 
         metadata
     }

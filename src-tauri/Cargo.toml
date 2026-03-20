@@ -25,7 +25,6 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 # Media processing
-ffmpeg-next = { workspace = true }
 rodio = { workspace = true }
 
 # Windows-specific
@@ -36,7 +35,6 @@ cpal = { workspace = true }
 symphonia = { workspace = true }
 
 # Virtual Video
-windows-capture = { workspace = true }
 image = { workspace = true }
 
 # Device enumeration and capabilities

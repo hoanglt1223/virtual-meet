@@ -13,7 +13,7 @@ use std::sync::{
 use std::thread;
 use std::time::{Duration, Instant};
 
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use std::sync::mpsc::{self, Receiver as StdReceiver, Sender as StdSender};
 use tracing::{debug, error, info, warn};
 
 use crate::audio::{AudioFrameData, AudioSampleFormat};
@@ -25,7 +25,7 @@ use crate::recording::config::{
 use crate::recording::mp4_muxer::MP4Muxer;
 
 /// Recording state
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 pub enum RecordingState {
     Idle,
     Starting,
@@ -98,7 +98,7 @@ impl VideoFormat {
 }
 
 /// Recording session configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct RecordingSession {
     /// Unique session ID
     pub id: String,
@@ -106,10 +106,11 @@ pub struct RecordingSession {
     pub output_path: PathBuf,
     /// Recording configuration
     pub config: RecordingConfig,
-    /// Session start time
+    /// Session start time (skipped for serialization — not serializable)
+    #[serde(skip)]
     pub start_time: Option<Instant>,
-    /// Session duration
-    pub duration: Duration,
+    /// Session duration in seconds
+    pub duration_secs: f64,
     /// Number of recorded frames
     pub video_frames_recorded: u64,
     /// Number of recorded audio frames
@@ -125,7 +126,7 @@ impl RecordingSession {
             output_path,
             config,
             start_time: None,
-            duration: Duration::ZERO,
+            duration_secs: 0.0,
             video_frames_recorded: 0,
             audio_frames_recorded: 0,
             file_size: 0,
@@ -149,7 +150,7 @@ impl RecordingSession {
     /// Start recording
     pub fn start(&mut self) {
         self.start_time = Some(Instant::now());
-        self.duration = Duration::ZERO;
+        self.duration_secs = 0.0;
         self.video_frames_recorded = 0;
         self.audio_frames_recorded = 0;
     }
@@ -157,21 +158,21 @@ impl RecordingSession {
     /// Stop recording
     pub fn stop(&mut self) {
         if let Some(start_time) = self.start_time {
-            self.duration = start_time.elapsed();
+            self.duration_secs = start_time.elapsed().as_secs_f64();
         }
         self.start_time = None;
     }
 }
 
 /// Statistics about the recording process
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct RecordingStats {
     /// Current recording state
     pub state: RecordingState,
     /// Current session information
     pub session: Option<RecordingSession>,
-    /// Total recording time
-    pub total_recording_time: Duration,
+    /// Total recording time in seconds
+    pub total_recording_time_secs: f64,
     /// Average video frame rate
     pub average_fps: f32,
     /// Average audio sample rate
@@ -199,7 +200,7 @@ pub struct CombinedRecorder {
     /// MP4 muxer for output file creation
     muxer: Arc<StdMutex<Option<MP4Muxer>>>,
     /// Frame sender for the recording thread
-    frame_sender: Arc<StdMutex<Option<UnboundedSender<AVFrame>>>>,
+    frame_sender: Arc<StdMutex<Option<StdSender<AVFrame>>>>,
     /// Recording thread handle
     recording_thread: Arc<StdMutex<Option<thread::JoinHandle<()>>>>,
     /// Statistics
@@ -224,7 +225,7 @@ impl CombinedRecorder {
             stats: Arc::new(StdMutex::new(RecordingStats {
                 state: RecordingState::Idle,
                 session: None,
-                total_recording_time: Duration::ZERO,
+                total_recording_time_secs: 0.0,
                 average_fps: 0.0,
                 average_sample_rate: 0,
                 dropped_video_frames: 0,
@@ -377,7 +378,7 @@ impl CombinedRecorder {
                 .map_err(|_| anyhow!("Failed to lock stats"))?;
             stats.state = RecordingState::Idle;
             if let Some(ref session) = session {
-                stats.total_recording_time += session.duration;
+                stats.total_recording_time_secs += session.duration_secs;
             }
         }
 
@@ -392,8 +393,8 @@ impl CombinedRecorder {
 
         if let Some(session) = session {
             info!(
-                "Stopped recording session {}, duration: {:?}",
-                session.id, session.duration
+                "Stopped recording session {}, duration: {:.1}s",
+                session.id, session.duration_secs
             );
         }
 
@@ -526,7 +527,7 @@ impl CombinedRecorder {
 
     /// Start the background recording thread
     fn start_recording_thread(&self) -> Result<()> {
-        let (frame_tx, frame_rx) = mpsc::unbounded_channel();
+        let (frame_tx, frame_rx) = mpsc::channel();
 
         // Store the sender
         {
@@ -571,7 +572,7 @@ impl CombinedRecorder {
 
     /// Main recording thread function
     fn recording_thread_main(
-        mut frame_rx: UnboundedReceiver<AVFrame>,
+        frame_rx: StdReceiver<AVFrame>,
         shutdown_flag: Arc<AtomicBool>,
         av_sync: Arc<StdMutex<AVSynchronizer>>,
         muxer: Arc<StdMutex<Option<MP4Muxer>>>,
@@ -597,11 +598,11 @@ impl CombinedRecorder {
                         error!("Error processing frame: {}", e);
                     }
                 }
-                Err(mpsc::error::RecvTimeoutError::Timeout) => {
+                Err(mpsc::RecvTimeoutError::Timeout) => {
                     // Timeout is normal - continue loop
                     continue;
                 }
-                Err(mpsc::error::RecvTimeoutError::Disconnected) => {
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
                     info!("Frame channel disconnected - shutting down recording thread");
                     break;
                 }
@@ -637,11 +638,6 @@ impl CombinedRecorder {
         if let Some(video_frame) = synced_frame.video_frame {
             muxer.write_video_frame(&video_frame)?;
 
-            // Update stats
-            if let Ok(mut stats_guard) = stats.lock() {
-                stats_guard.video_frames_recorded += 1;
-            }
-
             // Update session
             if let Ok(mut session_guard) = current_session.lock() {
                 if let Some(ref mut session) = *session_guard {
@@ -654,11 +650,6 @@ impl CombinedRecorder {
 
         if let Some(audio_frame) = synced_frame.audio_frame {
             muxer.write_audio_frame(&audio_frame)?;
-
-            // Update stats
-            if let Ok(mut stats_guard) = stats.lock() {
-                stats_guard.audio_frames_recorded += 1;
-            }
 
             // Update session
             if let Ok(mut session_guard) = current_session.lock() {

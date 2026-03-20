@@ -13,7 +13,8 @@ use tracing::{debug, error, info, warn};
 use crate::audio::AudioFrameData;
 use crate::audio::AudioSampleFormat;
 use crate::recording::combined_recorder::VideoFrameData;
-use crate::recording::config::{AudioCodec, RecordingConfig, VideoCodec, VideoFormat};
+use crate::recording::config::{AudioCodec, RecordingConfig, VideoCodec};
+use crate::recording::VideoFormat;
 
 /// MP4 muxer for creating output files
 pub struct MP4Muxer {
@@ -450,9 +451,7 @@ impl MP4Muxer {
                 .saturating_sub(self.timestamp_offset),
             video_bitrate: self.calculate_current_video_bitrate(),
             audio_bitrate: self.calculate_current_audio_bitrate(),
-            is_ffmpeg_running: self.ffmpeg_process.as_ref().map_or(false, |p| {
-                p.try_wait().ok().map_or(true, |status| status.is_none())
-            }),
+            is_ffmpeg_running: self.ffmpeg_process.is_some(),
         }
     }
 
@@ -469,7 +468,7 @@ impl MP4Muxer {
             // Rough estimate based on frame count and resolution
             let bits_per_frame =
                 (self.video_encoder.width * self.video_encoder.height * 3 * 8) as f64; // RGB24 approximation
-            (bits_per_frame * self.video_encoder.frame_rate) as u32
+            (bits_per_frame * self.video_encoder.frame_rate as f64) as u32
         } else {
             0
         }

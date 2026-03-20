@@ -1,7 +1,22 @@
-# VirtualMeet - Project Requirements & Tasks
+# VirtualMeet - Development Tasks & Progress
 
 ## Project Overview
-**VirtualMeet** is an open-source Windows application that simulates virtual presence by outputting pre-recorded video/audio as fake webcam and microphone inputs for meeting applications.
+**VirtualMeet** is an open-source Windows desktop app that simulates a "virtual presence" by sending pre-recorded video & audio into online meeting apps as a virtual webcam and virtual microphone.
+
+## Current Status: 🚧 ACTIVE DEVELOPMENT
+
+**Total Tasks:** 23 comprehensive tasks created via vibe-kanban MCP
+**Development Environment:** ✅ Complete
+**Documentation:** ✅ Organized in `/docs` folder
+**Tech Stack:** Tauri v2 + React + Vite + Tailwind + Rust
+
+## Task Management via vibe-kanban MCP
+
+### 📊 Task Summary
+- **23 Total Tasks** covering all development aspects
+- **High Priority:** 12 tasks (Core infrastructure and features)
+- **Medium Priority:** 9 tasks (UI, testing, optimization)
+- **Low Priority:** 2 tasks (Documentation and polish)
 
 ## Business Requirements
 
@@ -51,19 +66,15 @@ VirtualMeet/
 - **windows-rs**: Windows API integration
 - **serde**: JSON serialization for settings and scripts
 
-## Implementation Tasks
+## Implementation Tasks (Created via vibe-kanban MCP)
 
-📋 **See detailed kanban board in [kanban-board.md](./kanban-board.md)**
+### 🔴 HIGH PRIORITY TASKS
 
-### Sprint Overview (8 Weeks)
-- **Week 1**: Foundation & Core Infrastructure (10 tasks)
-- **Week 2**: Virtual Devices & Recording (8 tasks)
-- **Week 3**: Tauri Bridge & Frontend Setup (5 tasks)
-- **Week 4**: Core UI Development (6 tasks)
-- **Week 5**: Advanced Features (7 tasks)
-- **Week 6**: Platform Integration (4 tasks)
-- **Week 7**: Testing & Quality Assurance (5 tasks)
-- **Week 8**: Documentation & Release (5 tasks)
+#### Core Infrastructure
+1. **Set up Development Environment** ✅ COMPLETED
+   - Install virtual webcam/audio drivers
+   - Create project icons and branding
+   - Verify Tauri v2 + pnpm setup
 
 ### Phase 1: Core Infrastructure ✅ COMPLETED
 - [x] Project setup and documentation
@@ -73,36 +84,122 @@ VirtualMeet/
 - [x] Virtual device detection and integration
 - [ ] Basic UI framework setup
 
-### Phase 2: Media Playback
-- [ ] MP4 video playback implementation
-- [ ] MP3 audio playback implementation
-- [ ] Media file scanning and library
-- [ ] Thumbnail generation for videos
+3. **Implement Audio Pipeline Foundation** ⏳ PENDING (10 hours)
+   - MP3/PCM decoding using rodio/FFmpeg
+   - Audio resampling and format conversion
+   - Volume control and mute functionality
 
-### Phase 3: Virtual Output
-- [ ] Virtual webcam driver integration
-- [ ] Virtual microphone driver integration
-- [ ] Real-time video streaming to virtual devices
-- [ ] Real-time audio streaming to virtual devices
+4. **Device Enumeration System** ⏳ PENDING (8 hours)
+   - Discover webcam/audio devices
+   - Identify virtual vs physical devices
+   - Device capability detection
 
-### Phase 4: User Interface
-- [ ] Media library UI with thumbnails
-- [ ] Playback controls and switching UI
-- [ ] Settings panel implementation
-- [ ] Hotkey configuration system
+5. **Virtual Device Integration** ⏳ PENDING (16 hours)
+   - Virtual webcam integration (DirectShow/MF)
+   - Virtual microphone integration (WASAPI)
+   - Media routing to virtual devices
 
-### Phase 5: Advanced Features
-- [ ] Recording functionality (combined A/V)
-- [ ] Playlist management
-- [ ] Scripting engine implementation
-- [ ] Automation and hotkey triggers
+6. **Combined Recording Pipeline** ⏳ PENDING (14 hours)
+   - Real-time A/V recording to MP4
+   - Configurable resolution (720p/1080p)
+   - Quality presets and A/V sync
 
-### Phase 6: Polish & Release
-- [ ] Error handling and stability
-- [ ] Performance optimization
-- [ ] Installer creation
-- [ ] Documentation and README
-- [ ] MIT license application
+7. **Tauri Command API Layer** ⏳ PENDING (10 hours)
+   - Expose Rust functionality to React
+   - Device management commands
+   - Media control and recording commands
+
+8. **Media Library Scanning** ⏳ PENDING (8 hours)
+   - Scan folders for MP4/MP3 files
+   - Extract metadata and generate thumbnails
+   - Create searchable media index
+
+#### User Interface
+9. **Dashboard UI with Video Preview** ⏳ PENDING (12 hours)
+   - Real-time video preview window
+   - Playback controls and volume control
+   - Status indicators and quick actions
+
+10. **Media Library UI with Thumbnails** ⏳ PENDING (10 hours)
+    - Thumbnail grid with metadata display
+    - Search and filter functionality
+    - Quick actions for media selection
+
+#### Performance & Optimization
+11. **Performance Optimization** ⏳ PENDING (14 hours)
+    - Optimize for <200ms switching requirement
+    - Video decoding performance
+    - Audio latency optimization
+    - Memory usage optimization
+
+12. **Error Handling and Logging Framework** ⏳ PENDING (6 hours)
+    - Custom error types and handling
+    - Multi-level logging system
+    - User-friendly error messages
+
+### 🟡 MEDIUM PRIORITY TASKS
+
+13. **Recording Interface and Controls** ⏳ PENDING (8 hours)
+    - Start/stop recording controls
+    - Resolution and quality selection
+    - Recent recordings list
+
+14. **Settings and Configuration UI** ⏳ PENDING (12 hours)
+    - Device selection interface
+    - Media folder configuration
+    - Hotkey configuration
+    - Theme and preference settings
+
+15. **Global Hotkey System** ⏳ PENDING (6 hours)
+    - Global hotkey registration
+    - Support for F1-F12 keys
+    - Works when app is unfocused
+
+16. **JSON/DSL Scripting Engine** ⏳ PENDING (10 hours)
+    - JSON DSL parsing and execution
+    - Script runtime and sequencing
+    - Error handling for scripts
+
+17. **State Management System** ⏳ PENDING (8 hours)
+    - Centralized state management
+    - Media playback status tracking
+    - React state synchronization
+
+#### Testing & Quality
+18. **Unit Tests for Core Modules** ⏳ PENDING (12 hours)
+    - Video pipeline tests
+    - Audio pipeline tests
+    - Device management tests
+    - Error handling tests
+
+19. **Integration Tests with Virtual Devices** ⏳ PENDING (10 hours)
+    - End-to-end virtual device testing
+    - Video/audio switching tests
+    - Recording sync tests
+    - Hotkey functionality tests
+
+20. **Build System and Packaging** ⏳ PENDING (8 hours)
+    - Automated build configuration
+    - Windows installer creation
+    - Code signing setup
+    - Distribution optimization
+
+## Development Progress Summary
+
+### ✅ COMPLETED (1 task)
+- **Set up Development Environment**: All prerequisites, documentation, and project structure
+
+### ⏳ IN PROGRESS
+- Current focus: Video pipeline foundation implementation
+- Ready to begin: Audio pipeline and device enumeration
+
+### 📊 Total Estimated Effort
+- **23 tasks** with **178 estimated hours**
+- **Average 7.7 hours per task**
+- **Core infrastructure**: 76 hours
+- **User interface**: 42 hours
+- **Testing & QA**: 38 hours
+- **Build & release**: 22 hours
 
 ## Success Metrics
 - Video/audio switching latency <200ms

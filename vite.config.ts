@@ -8,8 +8,6 @@ export default defineConfig(async () => ({
     react({
       // Fast Refresh for React
       fastRefresh: true,
-      // Enable React Strict Mode
-      jsxImportSource: "@emotion/react",
     }),
   ],
 

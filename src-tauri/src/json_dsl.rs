@@ -7,6 +7,8 @@ use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
@@ -539,15 +541,16 @@ impl JsonDslEngine {
     }
 
     /// Execute a single action
-    async fn execute_action(
-        &mut self,
-        action: &ScriptAction,
+    fn execute_action<'a>(
+        &'a mut self,
+        action: &'a ScriptAction,
         action_index: usize,
-    ) -> Result<Option<String>> {
-        let context = self
-            .context
-            .as_mut()
-            .ok_or_else(|| anyhow!("No execution context"))?;
+    ) -> Pin<Box<dyn Future<Output = Result<Option<String>>> + Send + 'a>> {
+        Box::pin(async move {
+        // Validate context exists (don't hold borrow — re-borrow per arm as needed)
+        if self.context.is_none() {
+            return Err(anyhow!("No execution context"));
+        }
 
         match action {
             ScriptAction::PlayVideo {
@@ -662,7 +665,9 @@ impl JsonDslEngine {
             }
 
             ScriptAction::SetVariable { name, value } => {
-                context.variables.insert(name.clone(), value.clone());
+                if let Some(ctx) = self.context.as_mut() {
+                    ctx.variables.insert(name.clone(), value.clone());
+                }
                 let log_msg = format!("Set variable '{}' to {:?}", name, value);
                 debug!("{}", log_msg);
                 Ok(Some(log_msg))
@@ -733,9 +738,10 @@ impl JsonDslEngine {
                 debug!("{}", log_msg);
 
                 for i in (*from..*to).step_by(step_val.unsigned_abs() as usize) {
-                    context
-                        .variables
-                        .insert(variable.clone(), ScriptValue::Integer(i as i64));
+                    // Update loop variable then drop context before recursive call
+                    if let Some(ctx) = self.context.as_mut() {
+                        ctx.variables.insert(variable.clone(), ScriptValue::Integer(i as i64));
+                    }
 
                     for (nested_index, nested_action) in actions.iter().enumerate() {
                         self.execute_action(nested_action, nested_index).await?;
@@ -785,6 +791,7 @@ impl JsonDslEngine {
                 Ok(Some(log_msg))
             }
         }
+        })
     }
 
     /// Evaluate a script condition

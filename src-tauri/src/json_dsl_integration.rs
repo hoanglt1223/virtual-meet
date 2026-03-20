@@ -470,11 +470,8 @@ impl IntegratedDslEngine {
             }
 
             // Remove the first session (simplified for single recording support)
-            media
-                .recording_sessions
-                .drain()
-                .next()
-                .map(|(id, session)| (id, session))
+            let first_key = media.recording_sessions.keys().next().cloned();
+            first_key.and_then(|k| media.recording_sessions.remove(&k).map(|s| (k, s)))
         };
 
         if let Some((session_id, _session)) = session_info {
@@ -614,7 +611,7 @@ impl IntegratedDslEngine {
     }
 
     /// Get current media integration status
-    pub async fn get_media_status(&self) -> Result<MediaStatus> {
+    pub fn get_media_status(&self) -> Result<MediaStatus> {
         let media = self.media_integration.lock().unwrap();
 
         Ok(MediaStatus {
@@ -661,7 +658,7 @@ impl IntegratedDslEngine {
 }
 
 /// Media status information
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct MediaStatus {
     pub active_video_streams: usize,
     pub active_audio_streams: usize,
@@ -672,7 +669,7 @@ pub struct MediaStatus {
 }
 
 /// Media stream status
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct MediaStreamStatus {
     pub stream_id: String,
     pub file_path: String,
@@ -683,7 +680,7 @@ pub struct MediaStreamStatus {
 }
 
 /// Recording session status
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct RecordingSessionStatus {
     pub session_id: String,
     pub output_path: String,

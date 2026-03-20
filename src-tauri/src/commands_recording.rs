@@ -30,7 +30,7 @@ pub async fn start_recording(
 
     // Convert config options to full config
     let recording_config = if let Some(options) = config {
-        options.to_recording_config()?
+        options.to_recording_config().map_err(|e| e.to_string())?
     } else {
         RecordingConfig::hd_1080p()
     };
@@ -108,7 +108,7 @@ pub async fn update_recording_config(
         .map_err(|e| format!("Failed to lock recorder: {}", e))?;
 
     // Convert options to full config
-    let recording_config = config.to_recording_config()?;
+    let recording_config = config.to_recording_config().map_err(|e| e.to_string())?;
 
     // Update configuration
     recorder

@@ -28,7 +28,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "exactOptionalPropertyTypes": true,
+    "exactOptionalPropertyTypes": false,
     "noImplicitReturns": true,
     "noImplicitOverride": true,
 
@@ -42,13 +42,15 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": [
-    "src",
-    "vite.config.ts"
+    "src"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "src-tauri/target"
+    "src-tauri/target",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/test"
   ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

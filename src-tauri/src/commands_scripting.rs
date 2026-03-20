@@ -6,10 +6,10 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex as StdMutex};
-use tauri::{command, AppHandle, State};
+use tauri::{command, AppHandle, Manager, State};
 use tracing::{debug, error, info, warn};
 
-use crate::AppState;
+use crate::commands::AppState;
 
 /// Script execution result
 #[derive(Debug, Serialize, Clone)]
@@ -184,11 +184,12 @@ pub async fn execute_script(
     let script = match state.scripts.get(&request.script_id) {
         Some(script) => script.clone(),
         None => {
+            let script_id_copy = request.script_id.clone();
             return Ok(ScriptExecutionResult {
                 success: false,
                 script_id: request.script_id,
                 output: String::new(),
-                error: Some(format!("Script with ID '{}' not found", request.script_id)),
+                error: Some(format!("Script with ID '{}' not found", script_id_copy)),
                 execution_time_ms: 0,
                 variables: HashMap::new(),
                 logs: vec![],
@@ -211,7 +212,7 @@ pub async fn execute_script(
     let start_time = std::time::Instant::now();
 
     match script.language {
-        ScriptLanguage::Rhai => execute_rhai_script(&script, request.parameters, &state),
+        ScriptLanguage::Rhai => Ok(execute_rhai_script(&script, request.parameters, &state)),
         ScriptLanguage::JavaScript => Ok(ScriptExecutionResult {
             success: false,
             script_id: request.script_id,
@@ -254,7 +255,8 @@ pub async fn create_script(
     let script_id = generate_script_id(&request.name);
 
     // Validate script syntax
-    let validation_result = validate_script_syntax(&request.content, &request.language)?;
+    let validation_result = validate_script_syntax(&request.content, &request.language)
+        .map_err(|e| e.to_string())?;
     if !validation_result.is_valid {
         return Err(format!(
             "Script syntax validation failed: {:?}",
@@ -324,7 +326,8 @@ pub async fn update_script(
     }
     if let Some(content) = request.content {
         // Validate syntax before updating
-        let validation_result = validate_script_syntax(&content, &script.language)?;
+        let validation_result = validate_script_syntax(&content, &script.language)
+            .map_err(|e| e.to_string())?;
         if !validation_result.is_valid {
             return Err(format!(
                 "Script syntax validation failed: {:?}",
@@ -616,19 +619,7 @@ fn execute_rhai_script(
         }
     }
 
-    // Add built-in functions and variables
-    scope.push(
-        "print",
-        rhai::Dynamic::from_fn(move |args: rhai::NativeCallArgs| {
-            let message = args
-                .iter()
-                .map(|arg| arg.to_string())
-                .collect::<Vec<_>>()
-                .join(" ");
-            info!("Script output: {}", message);
-            rhai::Dynamic::from(())
-        }),
-    );
+    // Note: print is built-in to rhai engine
 
     match engine.eval_with_scope::<rhai::Dynamic>(&mut scope, &script.content) {
         Ok(result) => {
@@ -636,10 +627,10 @@ fn execute_rhai_script(
 
             // Extract variables from scope
             let mut variables = HashMap::new();
-            for (name, value) in scope.iter() {
+            for (name, _is_constant, value) in scope.iter() {
                 variables.insert(
-                    name.clone(),
-                    serde_json::to_value(&value).unwrap_or_default(),
+                    name.to_string(),
+                    serde_json::to_value(value.to_string()).unwrap_or_default(),
                 );
             }
 

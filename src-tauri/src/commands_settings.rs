@@ -10,7 +10,7 @@ use tauri::{command, AppHandle, State};
 use tracing::{debug, error, info, warn};
 
 use crate::devices::{DeviceCategory, DeviceOrigin, DeviceType};
-use crate::AppState;
+use crate::commands::AppState;
 
 /// Application settings structure
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -211,7 +211,7 @@ pub struct UpdateSettingsRequest {
 }
 
 /// Settings category
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub enum SettingsCategory {
     General,
     Video,

@@ -468,10 +468,10 @@ pub struct DeviceFilterer;
 
 impl DeviceFilterer {
     /// Filter devices based on criteria
-    pub fn filter_devices(
-        devices: &[FullDeviceInfo],
-        filter: &DeviceFilter,
-    ) -> Vec<&FullDeviceInfo> {
+    pub fn filter_devices<'a>(
+        devices: &'a [FullDeviceInfo],
+        filter: &'a DeviceFilter,
+    ) -> Vec<&'a FullDeviceInfo> {
         devices.iter().filter(|d| filter.matches(d)).collect()
     }
 
@@ -491,18 +491,18 @@ impl DeviceFilterer {
     }
 
     /// Find device by ID
-    pub fn find_device_by_id(
-        devices: &[FullDeviceInfo],
+    pub fn find_device_by_id<'a>(
+        devices: &'a [FullDeviceInfo],
         device_id: &str,
-    ) -> Option<&FullDeviceInfo> {
+    ) -> Option<&'a FullDeviceInfo> {
         devices.iter().find(|d| d.info.id == device_id)
     }
 
     /// Find devices by name (partial match)
-    pub fn find_devices_by_name(
-        devices: &[FullDeviceInfo],
+    pub fn find_devices_by_name<'a>(
+        devices: &'a [FullDeviceInfo],
         name_pattern: &str,
-    ) -> Vec<&FullDeviceInfo> {
+    ) -> Vec<&'a FullDeviceInfo> {
         let pattern = name_pattern.to_lowercase();
         devices
             .iter()

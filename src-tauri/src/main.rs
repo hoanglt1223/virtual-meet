@@ -11,6 +11,7 @@ mod commands_media;
 mod commands_recording;
 mod commands_scripting;
 mod commands_settings;
+mod commands_setup;
 mod devices;
 mod error;
 mod hotkeys;
@@ -78,19 +79,27 @@ async fn main() {
             let json_dsl_state = commands_json_dsl::create_json_dsl_state();
             app.manage(json_dsl_state);
 
-            // Initialize recording system
-            let mut app_handle = app.handle();
-            if let Err(e) = commands_recording::initialize_recorder(&mut app_handle) {
-                tracing::error!("Failed to initialize recorder: {}", e);
-            } else {
-                tracing::info!("Recording system initialized successfully");
+            // Initialize recording system (async fn, use blocking approach)
+            {
+                let recorder_result = {
+                    let config = crate::recording::RecordingConfig::default();
+                    crate::recording::CombinedRecorder::new(config)
+                };
+                match recorder_result {
+                    Ok(recorder) => {
+                        app.manage(std::sync::Mutex::new(recorder));
+                        tracing::info!("Recording system initialized successfully");
+                    }
+                    Err(e) => tracing::error!("Failed to initialize recorder: {}", e),
+                }
             }
 
             // Initialize virtual webcam
-            let state = app.state::<commands::AppState>();
-            let webcam_state = state.clone();
+            let webcam_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = webcam_state.webcam.initialize().await {
+                use tauri::Manager;
+                let state = webcam_handle.state::<commands::AppState>();
+                if let Err(e) = state.webcam.initialize().await {
                     tracing::error!("Failed to initialize virtual webcam: {}", e);
                 } else {
                     tracing::info!("Virtual webcam initialized successfully");
@@ -98,9 +107,11 @@ async fn main() {
             });
 
             // Initialize virtual microphone
-            let mic_state = state.clone();
+            let mic_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = mic_state.microphone.initialize().await {
+                use tauri::Manager;
+                let state = mic_handle.state::<commands::AppState>();
+                if let Err(e) = state.microphone.initialize().await {
                     tracing::error!("Failed to initialize virtual microphone: {}", e);
                 } else {
                     tracing::info!("Virtual microphone initialized successfully");
@@ -148,9 +159,9 @@ async fn main() {
             commands::virtual_devices::start_media_routing,
             commands::virtual_devices::stop_media_routing,
             commands::virtual_devices::switch_media,
-            commands::virtual_devices::set_microphone_volume,
+            commands::virtual_devices::set_vd_microphone_volume,
             commands::virtual_devices::get_microphone_volume,
-            commands::virtual_devices::set_microphone_muted,
+            commands::virtual_devices::set_vd_microphone_muted,
             commands::virtual_devices::get_microphone_muted,
             commands::virtual_devices::get_media_routing_status,
             commands::virtual_devices::get_webcam_video_info,
@@ -209,10 +220,15 @@ async fn main() {
             commands_json_dsl::execute_json_dsl_content,
             commands_json_dsl::get_media_status,
             commands_json_dsl::stop_script_execution,
-            commands_json_dsl::get_script_templates,
+            commands_json_dsl::get_dsl_templates,
             commands_json_dsl::validate_json_dsl_script,
             commands_json_dsl::export_json_dsl_script,
             commands_json_dsl::import_json_dsl_script,
+            // Setup and device detection commands
+            commands_setup::detect_virtual_devices,
+            commands_setup::get_webcam_modes,
+            commands_setup::register_vcam_driver,
+            commands_setup::unregister_vcam_driver,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

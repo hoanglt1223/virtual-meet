@@ -1,152 +1,265 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  Play, Pause, Square, SkipBack, SkipForward, Mic, Video, Volume2,
-  VolumeX, Maximize2, Settings, Camera, MicOff, Monitor, Download,
-  RefreshCw, WifiOff, CheckCircle, Circle
+  Play, Square, Mic, Video, Volume2,
+  VolumeX, Camera, MicOff, Monitor,
+  RefreshCw, CheckCircle, AlertCircle, Loader2
 } from "lucide-react";
-import type { MediaFile, PlaybackState, RecordingState } from "@/types";
+
+// Response types matching Rust structs
+interface VideoResponse {
+  success: boolean;
+  message: string;
+  video_info?: {
+    width: number;
+    height: number;
+    frame_rate: number;
+    duration?: { secs: number; nanos: number };
+  };
+  buffer_status?: {
+    current_frames: number;
+    capacity: number;
+    total_processed: number;
+  };
+}
+
+interface DevicesResponse {
+  success: boolean;
+  devices: string[];
+}
+
+interface StatusResponse {
+  is_active: boolean;
+  current_source?: string;
+  video_info?: {
+    width: number;
+    height: number;
+    frame_rate: number;
+    duration?: { secs: number; nanos: number };
+  };
+}
+
+interface AudioStatusResponse {
+  is_active: boolean;
+  current_source?: string;
+  volume: number;
+  is_muted: boolean;
+}
+
+interface WebcamModeInfo {
+  id: string;
+  name: string;
+  description: string;
+  available: boolean;
+  requires: string[];
+}
 
 export default function Dashboard() {
-  const [playbackState, setPlaybackState] = useState<PlaybackState>({
-    isPlaying: false,
-    position: 0,
-    volume: 0.75,
-    isLooping: false,
-  });
+  // Video state
+  const [videoPath, setVideoPath] = useState<string | null>(null);
+  const [videoStreaming, setVideoStreaming] = useState(false);
+  const [videoInfo, setVideoInfo] = useState<VideoResponse["video_info"]>(undefined);
+  const [videoDevices, setVideoDevices] = useState<string[]>([]);
+  const [selectedVideoDevice, setSelectedVideoDevice] = useState<string>("");
+  const [webcamModes, setWebcamModes] = useState<WebcamModeInfo[]>([]);
+  const [selectedMode, setSelectedMode] = useState<string>("obs");
 
-  const [recordingState, setRecordingState] = useState<RecordingState>({
-    isRecording: false,
-    duration: 0,
-    resolution: "1080p",
-    quality: "high",
-  });
-
-  const [selectedVideo, _setSelectedVideo] = useState<MediaFile | null>(null);
-  const [selectedAudio, _setSelectedAudio] = useState<MediaFile | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  // Audio state
+  const [audioPath, setAudioPath] = useState<string | null>(null);
+  const [audioStreaming, setAudioStreaming] = useState(false);
+  const [audioDevices, setAudioDevices] = useState<string[]>([]);
+  const [selectedAudioDevice, setSelectedAudioDevice] = useState<string>("");
+  const [volume, setVolume] = useState(0.75);
   const [isMuted, setIsMuted] = useState(false);
-  const [connectionStatus, _setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connected');
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  // UI state
+  const [loading, setLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string>("");
 
-  // Mock duration updates for demo
+  // Load devices on mount
   useEffect(() => {
-    const interval = setInterval(() => {
-      setRecordingState((prev: RecordingState) => ({
-        ...prev,
-        duration: prev.isRecording ? prev.duration + 1 : prev.duration,
-      }));
-
-      if (playbackState.isPlaying && selectedVideo) {
-        setPlaybackState(prev => ({
-          ...prev,
-          position: Math.min((prev.position + 1) % (selectedVideo.duration || 100), selectedVideo.duration || 100),
-        }));
-      }
-    }, 1000);
-
+    loadDevices();
+    pollStatus();
+    const interval = setInterval(pollStatus, 3000);
     return () => clearInterval(interval);
-  }, [recordingState.isRecording, playbackState.isPlaying, selectedVideo]);
+  }, []);
 
-  const formatTime = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  const loadDevices = async () => {
+    try {
+      const videoResp = await invoke<DevicesResponse>("list_video_devices");
+      if (videoResp.success) setVideoDevices(videoResp.devices);
+
+      const audioResp = await invoke<DevicesResponse>("list_audio_devices");
+      if (audioResp.success) setAudioDevices(audioResp.devices);
+
+      const modes = await invoke<WebcamModeInfo[]>("get_webcam_modes");
+      setWebcamModes(modes);
+    } catch (e) {
+      console.error("Failed to load devices:", e);
+    }
   };
 
-  const handlePlayPause = () => {
-    setPlaybackState(prev => ({
-      ...prev,
-      isPlaying: !prev.isPlaying,
-    }));
-
-    if (videoRef.current) {
-      if (playbackState.isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
+  const pollStatus = async () => {
+    try {
+      const webcamStatus = await invoke<StatusResponse>("get_webcam_status");
+      setVideoStreaming(webcamStatus.is_active);
+      if (webcamStatus.video_info) setVideoInfo(webcamStatus.video_info);
+      if (webcamStatus.current_source && !videoPath) {
+        setVideoPath(webcamStatus.current_source);
       }
-    }
-  };
 
-  const handleStop = () => {
-    setPlaybackState(prev => ({
-      ...prev,
-      isPlaying: false,
-      position: 0,
-    }));
-
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-    }
-  };
-
-  const handleSeek = (direction: 'forward' | 'backward') => {
-    const increment = direction === 'forward' ? 10 : -10;
-    setPlaybackState(prev => ({
-      ...prev,
-      position: Math.max(0, Math.min(prev.position + increment, selectedVideo?.duration || 100)),
-    }));
-
-    if (videoRef.current) {
-      videoRef.current.currentTime += increment;
-    }
-  };
-
-  const handleVolumeChange = (volume: number) => {
-    setPlaybackState(prev => ({
-      ...prev,
-      volume,
-      isPlaying: volume === 0 ? false : prev.isPlaying,
-    }));
-
-    if (videoRef.current && audioRef.current) {
-      videoRef.current.volume = volume;
-      audioRef.current.volume = volume;
-    }
-  };
-
-  const handleMuteToggle = () => {
-    setIsMuted(prev => !prev);
-    handleVolumeChange(isMuted ? playbackState.volume : 0);
-  };
-
-  const handleRecordingToggle = () => {
-    setRecordingState((prev: RecordingState) => ({
-      ...prev,
-      isRecording: !prev.isRecording,
-      startTime: !prev.isRecording ? new Date() : prev.startTime,
-    }));
-  };
-
-  const handleFullscreen = () => {
-    if (videoRef.current) {
-      if (!isFullscreen) {
-        videoRef.current.requestFullscreen();
-      } else {
-        document.exitFullscreen();
+      const micStatus = await invoke<AudioStatusResponse>("get_microphone_status");
+      setAudioStreaming(micStatus.is_active);
+      setVolume(micStatus.volume);
+      setIsMuted(micStatus.is_muted);
+      if (micStatus.current_source && !audioPath) {
+        setAudioPath(micStatus.current_source);
       }
+    } catch {
+      // Status polling failures are non-critical
     }
-    setIsFullscreen(prev => !prev);
   };
 
-  const getStatusIcon = () => {
-    switch (connectionStatus) {
-      case 'connected':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'disconnected':
-        return <WifiOff className="h-4 w-4 text-red-500" />;
-      case 'connecting':
-        return <RefreshCw className="h-4 w-4 text-yellow-500 animate-spin" />;
+  // Select video file
+  const handleSelectVideo = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: "Video", extensions: ["mp4", "mkv", "avi", "webm", "mov"] }],
+      });
+      if (selected) {
+        setVideoPath(selected as string);
+        setError(null);
+        setStatusMessage(`Video selected: ${(selected as string).split(/[\\/]/).pop()}`);
+      }
+    } catch (e) {
+      setError(`Failed to select video: ${e}`);
     }
   };
+
+  // Select audio file
+  const handleSelectAudio = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: "Audio", extensions: ["mp3", "wav", "m4a", "aac", "ogg", "flac"] }],
+      });
+      if (selected) {
+        setAudioPath(selected as string);
+        setError(null);
+        setStatusMessage(`Audio selected: ${(selected as string).split(/[\\/]/).pop()}`);
+      }
+    } catch (e) {
+      setError(`Failed to select audio: ${e}`);
+    }
+  };
+
+  // Start/stop video streaming
+  const handleVideoToggle = async () => {
+    if (videoStreaming) {
+      setLoading("video-stop");
+      try {
+        const resp = await invoke<VideoResponse>("stop_streaming");
+        setVideoStreaming(false);
+        setVideoInfo(undefined);
+        setStatusMessage(resp.message);
+      } catch (e) {
+        setError(`Failed to stop video: ${e}`);
+      }
+      setLoading(null);
+    } else {
+      if (!videoPath) {
+        setError("Select a video file first");
+        return;
+      }
+      setLoading("video-start");
+      setError(null);
+      try {
+        const resp = await invoke<VideoResponse>("start_streaming", { request: { path: videoPath } });
+        if (resp.success) {
+          setVideoStreaming(true);
+          if (resp.video_info) setVideoInfo(resp.video_info);
+          setStatusMessage(resp.message);
+        } else {
+          setError(resp.message);
+        }
+      } catch (e) {
+        setError(`Failed to start video: ${e}`);
+      }
+      setLoading(null);
+    }
+  };
+
+  // Start/stop audio streaming
+  const handleAudioToggle = async () => {
+    if (audioStreaming) {
+      setLoading("audio-stop");
+      try {
+        const resp = await invoke<VideoResponse>("stop_audio_streaming");
+        setAudioStreaming(false);
+        setStatusMessage(resp.message);
+      } catch (e) {
+        setError(`Failed to stop audio: ${e}`);
+      }
+      setLoading(null);
+    } else {
+      if (!audioPath) {
+        setError("Select an audio file first");
+        return;
+      }
+      setLoading("audio-start");
+      setError(null);
+      try {
+        const resp = await invoke<VideoResponse>("start_audio_streaming", { request: { path: audioPath } });
+        if (resp.success) {
+          setAudioStreaming(true);
+          setStatusMessage(resp.message);
+        } else {
+          setError(resp.message);
+        }
+      } catch (e) {
+        setError(`Failed to start audio: ${e}`);
+      }
+      setLoading(null);
+    }
+  };
+
+  // Volume control
+  const handleVolumeChange = async (newVolume: number) => {
+    const clamped = Math.max(0, Math.min(1, newVolume));
+    setVolume(clamped);
+    try {
+      await invoke("set_microphone_volume", { request: { volume: clamped } });
+    } catch {
+      // Non-critical
+    }
+  };
+
+  const handleMuteToggle = async () => {
+    const newMuted = !isMuted;
+    setIsMuted(newMuted);
+    try {
+      await invoke("toggle_microphone_mute");
+    } catch {
+      // Non-critical
+    }
+  };
+
+  const formatDuration = (dur?: { secs: number; nanos: number }) => {
+    if (!dur) return "N/A";
+    const totalSecs = dur.secs;
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const fileName = (path: string | null) => path?.split(/[\\/]/).pop() || "None";
 
   return (
     <div className="space-y-6">
@@ -154,356 +267,270 @@ export default function Dashboard() {
       <Card>
         <CardContent className="py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                {getStatusIcon()}
-                <span className="text-sm font-medium capitalize">{connectionStatus}</span>
-              </div>
-              <Badge variant={recordingState.isRecording ? "destructive" : "secondary"}>
-                {recordingState.isRecording ? (
-                  <><Circle className="h-3 w-3 mr-1 animate-pulse" /> Recording</>
+            <div className="flex items-center gap-4">
+              <Badge variant={videoStreaming ? "default" : "secondary"}>
+                {videoStreaming ? (
+                  <><Video className="h-3 w-3 mr-1" /> Video Active</>
                 ) : (
-                  "Ready"
+                  <><Video className="h-3 w-3 mr-1" /> Video Off</>
                 )}
               </Badge>
-              <Badge variant={playbackState.isPlaying ? "default" : "secondary"}>
-                {playbackState.isPlaying ? (
-                  <><Play className="h-3 w-3 mr-1" /> Playing</>
+              <Badge variant={audioStreaming ? "default" : "secondary"}>
+                {audioStreaming ? (
+                  <><Mic className="h-3 w-3 mr-1" /> Audio Active</>
                 ) : (
-                  "Paused"
+                  <><MicOff className="h-3 w-3 mr-1" /> Audio Off</>
                 )}
               </Badge>
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              {selectedVideo && `${selectedVideo.name} • ${selectedVideo.metadata?.width || 'N/A'}x${selectedVideo.metadata?.height || 'N/A'}`}
+            <div className="flex items-center gap-2">
+              {statusMessage && (
+                <span className="text-xs text-muted-foreground">{statusMessage}</span>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => { loadDevices(); pollStatus(); }}>
+                <RefreshCw className="h-3 w-3" />
+              </Button>
             </div>
           </div>
+          {error && (
+            <div className="mt-2 flex items-center gap-2 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              {error}
+              <Button size="sm" variant="ghost" className="h-5 px-1 text-xs" onClick={() => setError(null)}>
+                dismiss
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Main Video Preview Area */}
-      <Card className="md:col-span-2">
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Video className="h-5 w-5" />
-              Real-time Video Preview
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Video Control */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Camera className="h-5 w-5" />
+              Virtual Webcam
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Video file selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Video File</label>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1 justify-start truncate" onClick={handleSelectVideo}>
+                  <Video className="h-4 w-4 mr-2 shrink-0" />
+                  <span className="truncate">{videoPath ? fileName(videoPath) : "Select video file..."}</span>
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={handleFullscreen}>
-                <Maximize2 className="h-4 w-4 mr-2" />
-                Fullscreen
-              </Button>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="relative aspect-video bg-black rounded-lg overflow-hidden group">
-            {selectedVideo ? (
-              <video
-                ref={videoRef}
-                className="w-full h-full object-contain"
-                src={selectedVideo.path}
-                onTimeUpdate={(e) => setPlaybackState(prev => ({ ...prev, position: Math.floor(e.currentTarget.currentTime) }))}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full bg-gradient-to-br from-gray-900 to-gray-800">
-                <div className="text-center space-y-4">
-                  <Monitor className="h-16 w-16 mx-auto text-gray-600" />
-                  <div>
-                    <p className="text-gray-400 font-medium">No video source selected</p>
-                    <p className="text-gray-500 text-sm">Select a video from the Media Library to begin</p>
-                  </div>
-                  <Button variant="outline" size="sm">
-                    <Camera className="h-4 w-4 mr-2" />
-                    Select Video Source
-                  </Button>
+
+            {/* Webcam mode selection */}
+            {webcamModes.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Mode</label>
+                <select
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={selectedMode}
+                  onChange={(e) => setSelectedMode(e.target.value)}
+                  disabled={videoStreaming}
+                >
+                  {webcamModes.map((m) => (
+                    <option key={m.id} value={m.id} disabled={!m.available}>
+                      {m.name}{!m.available ? " (not installed)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Video device selection (OBS mode only) */}
+            {selectedMode === "obs" && videoDevices.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Target Device</label>
+                <select
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={selectedVideoDevice}
+                  onChange={(e) => setSelectedVideoDevice(e.target.value)}
+                >
+                  <option value="">OBS Virtual Camera (default)</option>
+                  {videoDevices.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Video info */}
+            {videoInfo && (
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="bg-muted rounded p-2">
+                  <div className="text-muted-foreground">Resolution</div>
+                  <div className="font-medium">{videoInfo.width}x{videoInfo.height}</div>
+                </div>
+                <div className="bg-muted rounded p-2">
+                  <div className="text-muted-foreground">FPS</div>
+                  <div className="font-medium">{videoInfo.frame_rate.toFixed(1)}</div>
+                </div>
+                <div className="bg-muted rounded p-2">
+                  <div className="text-muted-foreground">Duration</div>
+                  <div className="font-medium">{formatDuration(videoInfo.duration)}</div>
                 </div>
               </div>
             )}
 
-            {/* Overlay Controls */}
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="flex items-center gap-4 text-white">
-                <Button size="sm" variant="secondary" onClick={handlePlayPause}>
-                  {playbackState.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => handleSeek('backward')}>
-                  <SkipBack className="h-4 w-4" />
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => handleSeek('forward')}>
-                  <SkipForward className="h-4 w-4" />
-                </Button>
-                <Button size="sm" variant="secondary" onClick={handleStop}>
-                  <Square className="h-4 w-4" />
-                </Button>
-
-                <div className="flex-1">
-                  <Progress
-                    value={(playbackState.position / (selectedVideo?.duration || 100)) * 100}
-                    className="h-2"
-                  />
-                  <div className="flex justify-between text-xs mt-1 text-white/70">
-                    <span>{formatTime(playbackState.position)}</span>
-                    <span>{formatTime(selectedVideo?.duration || 0)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Video Status Info */}
-          <div className="grid grid-cols-4 gap-4 text-sm">
-            <div className="bg-muted rounded-lg p-3">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Camera className="h-4 w-4" />
-                Resolution
-              </div>
-              <div className="font-medium mt-1">
-                {selectedVideo?.metadata?.width && selectedVideo?.metadata?.height
-                  ? `${selectedVideo.metadata.width}x${selectedVideo.metadata.height}`
-                  : "N/A"
-                }
-              </div>
-            </div>
-            <div className="bg-muted rounded-lg p-3">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Video className="h-4 w-4" />
-                Frame Rate
-              </div>
-              <div className="font-medium mt-1">
-                {selectedVideo?.metadata?.fps ? `${selectedVideo.metadata.fps} fps` : "N/A"}
-              </div>
-            </div>
-            <div className="bg-muted rounded-lg p-3">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Settings className="h-4 w-4" />
-                Quality
-              </div>
-              <div className="font-medium mt-1">{recordingState.quality}</div>
-            </div>
-            <div className="bg-muted rounded-lg p-3">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Monitor className="h-4 w-4" />
-                Output
-              </div>
-              <div className="font-medium mt-1">{recordingState.resolution}</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Playback Controls */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Play className="h-5 w-5" />
-              Playback Controls
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Button onClick={handlePlayPause} className="flex-1">
-                {playbackState.isPlaying ? (
-                  <><Pause className="h-4 w-4 mr-2" /> Pause</>
-                ) : (
-                  <><Play className="h-4 w-4 mr-2" /> Play</>
-                )}
-              </Button>
-              <Button variant="outline" onClick={handleStop}>
+            {/* Start/Stop button */}
+            <Button
+              className="w-full"
+              variant={videoStreaming ? "destructive" : "default"}
+              onClick={handleVideoToggle}
+              disabled={!!loading}
+            >
+              {loading?.startsWith("video") ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : videoStreaming ? (
                 <Square className="h-4 w-4 mr-2" />
-                Stop
-              </Button>
-            </div>
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              {videoStreaming ? "Stop Webcam" : "Start Webcam"}
+            </Button>
 
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => handleSeek('backward')}>
-                <SkipBack className="h-4 w-4 mr-2" />
-                -10s
-              </Button>
-              <div className="flex-1">
-                <Progress
-                  value={(playbackState.position / (selectedVideo?.duration || 100)) * 100}
-                  className="h-2"
-                />
-                <div className="flex justify-between text-xs mt-1 text-muted-foreground">
-                  <span>{formatTime(playbackState.position)}</span>
-                  <span>{formatTime(selectedVideo?.duration || 0)}</span>
-                </div>
+            {videoStreaming && (
+              <div className="flex items-center gap-2 text-sm">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span className="text-green-600">Streaming to virtual camera</span>
               </div>
-              <Button variant="outline" size="sm" onClick={() => handleSeek('forward')}>
-                +10s
-                <SkipForward className="h-4 w-4 ml-2" />
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Volume</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleMuteToggle}
-                  className="h-6 w-6 p-0"
-                >
-                  {isMuted || playbackState.volume === 0 ? (
-                    <VolumeX className="h-4 w-4" />
-                  ) : (
-                    <Volume2 className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-              <div className="flex items-center gap-2">
-                <Progress
-                  value={playbackState.volume * 100}
-                  className="flex-1 h-2 cursor-pointer"
-                  onClick={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const percent = (e.clientX - rect.left) / rect.width;
-                    handleVolumeChange(Math.max(0, Math.min(1, percent)));
-                  }}
-                />
-                <span className="text-sm text-muted-foreground w-10 text-right">
-                  {Math.round(playbackState.volume * 100)}%
-                </span>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Audio Status Card */}
+        {/* Audio Control */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Mic className="h-5 w-5" />
-              Audio Status
+              Virtual Microphone
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="bg-muted rounded-lg p-8 text-center">
-              {selectedAudio ? (
-                <div className="space-y-2">
-                  <Volume2 className="h-12 w-12 mx-auto text-primary" />
-                  <p className="font-medium">{selectedAudio.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedAudio.metadata?.sampleRate ? `${selectedAudio.metadata.sampleRate} Hz` : "N/A"} •
-                    {selectedAudio.metadata?.audioChannels ? ` ${selectedAudio.metadata.audioChannels} channels` : ""}
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <MicOff className="h-12 w-12 mx-auto text-muted-foreground" />
-                  <p className="text-muted-foreground">No audio selected</p>
-                </div>
-              )}
+            {/* Audio file selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Audio File</label>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1 justify-start truncate" onClick={handleSelectAudio}>
+                  <Mic className="h-4 w-4 mr-2 shrink-0" />
+                  <span className="truncate">{audioPath ? fileName(audioPath) : "Select audio file..."}</span>
+                </Button>
+              </div>
             </div>
 
-            <audio ref={audioRef} src={selectedAudio?.path} />
+            {/* Audio device selection */}
+            {audioDevices.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Output Device</label>
+                <select
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={selectedAudioDevice}
+                  onChange={(e) => setSelectedAudioDevice(e.target.value)}
+                >
+                  <option value="">Default output device</option>
+                  {audioDevices.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Select "CABLE Input" (VB-Audio) to use as virtual microphone
+                </p>
+              </div>
+            )}
 
+            {/* Volume control */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Audio Level</span>
-                {isMuted || playbackState.volume === 0 ? (
-                  <Badge variant="destructive">
-                    <VolumeX className="h-3 w-3 mr-1" />
-                    Muted
-                  </Badge>
-                ) : (
-                  <span className="text-sm text-muted-foreground">
-                    {Math.round(playbackState.volume * 100)}%
-                  </span>
-                )}
+                <span className="text-sm font-medium">Volume</span>
+                <Button variant="ghost" size="sm" onClick={handleMuteToggle} className="h-6 w-6 p-0">
+                  {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </Button>
               </div>
-              <Progress value={isMuted ? 0 : playbackState.volume * 100} className="h-2" />
+              <div className="flex items-center gap-2">
+                <Progress
+                  value={isMuted ? 0 : volume * 100}
+                  className="flex-1 h-2 cursor-pointer"
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const percent = (e.clientX - rect.left) / rect.width;
+                    handleVolumeChange(percent);
+                  }}
+                />
+                <span className="text-sm text-muted-foreground w-10 text-right">
+                  {isMuted ? "Muted" : `${Math.round(volume * 100)}%`}
+                </span>
+              </div>
             </div>
+
+            {/* Start/Stop button */}
+            <Button
+              className="w-full"
+              variant={audioStreaming ? "destructive" : "default"}
+              onClick={handleAudioToggle}
+              disabled={!!loading}
+            >
+              {loading?.startsWith("audio") ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : audioStreaming ? (
+                <Square className="h-4 w-4 mr-2" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              {audioStreaming ? "Stop Audio" : "Start Audio"}
+            </Button>
+
+            {audioStreaming && (
+              <div className="flex items-center gap-2 text-sm">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span className="text-green-600">Playing to output device</span>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Recording Status */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Circle className="h-5 w-5" />
-              Recording Control
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <Badge variant={recordingState.isRecording ? "destructive" : "secondary"}>
-                  {recordingState.isRecording ? (
-                    <><Circle className="h-3 w-3 mr-1 animate-pulse" /> Recording</>
-                  ) : (
-                    "Ready to Recording"
-                  )}
-                </Badge>
-                {recordingState.isRecording && (
-                  <p className="text-sm text-muted-foreground">
-                    Duration: {formatTime(recordingState.duration)}
-                  </p>
-                )}
+      {/* Quick Info */}
+      <Card>
+        <CardContent className="py-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="bg-muted rounded-lg p-3">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Camera className="h-4 w-4" />
+                Video Source
               </div>
-              <Button onClick={handleRecordingToggle} variant={recordingState.isRecording ? "destructive" : "default"}>
-                {recordingState.isRecording ? (
-                  <><Square className="h-4 w-4 mr-2" /> Stop Recording</>
-                ) : (
-                  <><Circle className="h-4 w-4 mr-2" /> Start Recording</>
-                )}
-              </Button>
+              <div className="font-medium mt-1 truncate">{videoPath ? fileName(videoPath) : "None"}</div>
             </div>
-
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Resolution:</span>
-                <div className="font-medium">{recordingState.resolution}</div>
+            <div className="bg-muted rounded-lg p-3">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Mic className="h-4 w-4" />
+                Audio Source
               </div>
-              <div>
-                <span className="text-muted-foreground">Quality:</span>
-                <div className="font-medium capitalize">{recordingState.quality}</div>
+              <div className="font-medium mt-1 truncate">{audioPath ? fileName(audioPath) : "None"}</div>
+            </div>
+            <div className="bg-muted rounded-lg p-3">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Monitor className="h-4 w-4" />
+                Video Device
               </div>
+              <div className="font-medium mt-1 truncate">{selectedVideoDevice || "OBS Virtual Camera"}</div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Quick Actions */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-3">
-              <Button variant="outline" className="h-16 flex-col">
-                <Camera className="h-5 w-5 mb-1" />
-                Select Video
-              </Button>
-              <Button variant="outline" className="h-16 flex-col">
-                <Mic className="h-5 w-5 mb-1" />
-                Select Audio
-              </Button>
-              <Button variant="outline" className="h-16 flex-col">
-                <Download className="h-5 w-5 mb-1" />
-                Export
-              </Button>
-              <Button variant="outline" className="h-16 flex-col">
-                <Settings className="h-5 w-5 mb-1" />
-                Settings
-              </Button>
+            <div className="bg-muted rounded-lg p-3">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Volume2 className="h-4 w-4" />
+                Audio Device
+              </div>
+              <div className="font-medium mt-1 truncate">{selectedAudioDevice || "Default output"}</div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Hidden audio element for playback */}
-      {selectedAudio && (
-        <audio
-          ref={audioRef}
-          src={selectedAudio.path}
-          onTimeUpdate={(e) => setPlaybackState(prev => ({ ...prev, position: Math.floor(e.currentTarget.currentTime) }))}
-        />
-      )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

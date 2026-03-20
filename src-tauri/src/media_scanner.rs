@@ -350,7 +350,7 @@ impl MediaScanner {
             let task = tokio::spawn(async move {
                 let _permit = semaphore.acquire().await.unwrap();
 
-                self.process_single_file(
+                Self::process_file_standalone(
                     &file_path,
                     &database,
                     &metadata_extractor,
@@ -379,8 +379,7 @@ impl MediaScanner {
     }
 
     /// Process a single file
-    async fn process_single_file(
-        &self,
+    async fn process_file_standalone(
         file_path: &Path,
         database: &Arc<MediaLibraryDatabase>,
         metadata_extractor: &Arc<RwLock<MetadataExtractor>>,
@@ -395,18 +394,13 @@ impl MediaScanner {
             .await
         {
             // Check if file was modified since last scan
-            if let Ok(metadata) = tokio::fs::metadata(file_path).await {
-                if let Ok(modified) = metadata.modified() {
-                    if let Some(db_modified) = db_file
-                        .modified_at
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .ok()
-                    {
-                        let modified_time = chrono::DateTime::from_timestamp(
-                            modified.as_secs() as i64,
-                            modified.subsec_nanos(),
-                        );
-                        if let Some(modified_time) = modified_time {
+            if let Ok(fs_metadata) = tokio::fs::metadata(file_path).await {
+                if let Ok(modified) = fs_metadata.modified() {
+                    if let Ok(duration_since_epoch) = modified.duration_since(std::time::UNIX_EPOCH) {
+                        if let Some(modified_time) = chrono::DateTime::from_timestamp(
+                            duration_since_epoch.as_secs() as i64,
+                            duration_since_epoch.subsec_nanos(),
+                        ) {
                             if modified_time <= db_file.modified_at {
                                 debug!("File unchanged, skipping: {}", file_path.display());
                                 return Ok(None); // Skip unchanged file
@@ -420,7 +414,7 @@ impl MediaScanner {
         // Extract metadata
         let media_analysis = {
             let mut extractor = metadata_extractor.write().await;
-            extractor.analyze_media_file(file_path).await
+            extractor.analyze_media_file(file_path)
         };
 
         let media_analysis = match media_analysis {
@@ -453,7 +447,7 @@ impl MediaScanner {
         let thumbnail_path = if enable_thumbnails
             && (media_type == MediaType::Video || media_type == MediaType::Audio)
         {
-            self.generate_thumbnail_for_file(file_path, &media_type, thumbnail_config, database)
+            Self::generate_thumbnail_standalone(file_path, &media_type, thumbnail_config, database)
                 .await?
         } else {
             None
@@ -501,9 +495,8 @@ impl MediaScanner {
         Ok(Some(media_info))
     }
 
-    /// Generate thumbnail for file
-    async fn generate_thumbnail_for_file(
-        &self,
+    /// Generate thumbnail for file (standalone, no &self needed)
+    async fn generate_thumbnail_standalone(
         file_path: &Path,
         media_type: &MediaType,
         thumbnail_config: &ThumbnailConfig,

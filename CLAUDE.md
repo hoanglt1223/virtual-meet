@@ -4,119 +4,103 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-VirtualMeet is a Windows desktop application built with Tauri v2 that simulates a "virtual presence" by routing pre-recorded video and audio through virtual devices for use in online meeting applications. The app combines a React frontend with a comprehensive Rust backend for media processing, device management, and automation.
+VirtualMeet is a Windows-only desktop application built with Tauri v2 that routes pre-recorded video and audio through virtual devices (OBS Virtual Camera, VB-CABLE, etc.) for use in online meeting apps. React frontend + Rust backend.
 
 ## Development Commands
 
 ```bash
-# Install dependencies
-pnpm install
+pnpm install                  # Install frontend dependencies
+pnpm tauri dev                # Full app dev with hot reload (frontend + Rust)
+pnpm tauri build              # Production build (NSIS installer output)
+pnpm dev                      # Frontend-only dev server (port 1420)
+pnpm build                    # Build frontend only (tsc + vite)
 
-# Start development server with hot reload
-pnpm tauri dev
+# Quality checks
+pnpm type-check               # TypeScript type checking (tsc --noEmit)
+pnpm lint                     # ESLint
+pnpm lint:fix                 # ESLint with auto-fix
+cargo fmt --all -- --check    # Rust formatting check
+cargo clippy --all-targets --all-features -- -D warnings  # Rust linting
 
-# Build for production
-pnpm tauri build
-
-# Frontend-only development (useful for UI testing)
-pnpm dev
-
-# Build frontend only
-pnpm build
-
-# TypeScript compilation
-tsc
-
-# Rust-specific commands (from project root)
-cargo build                    # Build Rust backend
-cargo run                      # Run Rust backend only
-cargo test                     # Run Rust tests
-cargo clippy                   # Lint Rust code
+# Testing
+pnpm test                     # Run vitest (frontend)
+pnpm test:watch               # Watch mode
+pnpm test:coverage            # With coverage (v8)
+cargo test --verbose          # Rust tests
 ```
 
 ## Architecture
 
-### Core Structure
+### IPC Boundary
 
-- **Frontend (`src/`)**: React + Vite + Tailwind CSS + shadcn/ui
-- **Backend (`src-tauri/`)**: Pure Rust with Tauri v2 for desktop app shell
-- **Architecture Pattern**: Frontend communicates with Rust backend via Tauri's IPC commands
+Frontend calls Rust via `@tauri-apps/api` invoke. All Tauri command handlers are registered in `src-tauri/src/main.rs` (the full handler list is there). Command modules are **flat files** in `src-tauri/src/`:
 
-### Backend Architecture
+| Module | Purpose |
+|---|---|
+| `commands.rs` | Core device management, `AppState` init |
+| `commands/virtual_devices.rs` | Virtual webcam/mic streaming & media routing |
+| `commands_media.rs` | Media library CRUD and search |
+| `commands_recording.rs` | Recording start/stop/config |
+| `commands_hotkeys.rs` | Global hotkey registration |
+| `commands_scripting.rs` | Rhai script management |
+| `commands_json_dsl.rs` | JSON DSL script execution |
+| `commands_settings.rs` | App settings get/set/export/import |
 
-The Rust backend is organized into key modules:
+### Backend Modules (src-tauri/src/)
 
-- **`commands/`**: Tauri command handlers split by functionality
-  - `commands.rs`: Core device management (webcam/microphone)
-  - `commands_media.rs`: Media library operations
-  - `commands_recording.rs`: Recording functionality
-  - `commands_hotkeys.rs`: Global hotkey management
-  - `commands_scripting.rs`: Script execution and management
-  - `commands_settings.rs`: Configuration management
+- **`virtual_device/`** — Webcam output, microphone output, media router (has `mod.rs` + submodules + `tests.rs`)
+- **`recording/`** — Combined recorder, MP4 muxer, A/V sync, config (has `mod.rs` + submodules)
+- **`devices/`** — Audio/video device enumeration and capability detection (has `mod.rs` + submodules)
+- **`audio.rs` / `audio_decoder.rs` / `audio_processor.rs`** — Audio pipeline (rodio playback, cpal device access, symphonia decoding)
+- **`media.rs` / `media_library.rs` / `media_scanner.rs` / `metadata_extractor.rs` / `thumbnail_generator.rs`** — SQLite media library with Tantivy full-text search
+- **`scripting.rs`** — Rhai scripting engine
+- **`json_dsl.rs` / `json_dsl_integration.rs`** — JSON DSL for automation
+- **`hotkeys.rs`** — Global hotkey system via `global-hotkey` crate
+- **`error.rs`** — Custom error types with anyhow
 
-- **`virtual/`**: Virtual device implementation
-  - `webcam.rs`: Virtual webcam video output
-  - `microphone.rs`: Virtual microphone audio output
-  - `media_router.rs`: Media routing between inputs and outputs
+### Frontend (src/)
 
-- **`media/`**: Media processing and management
-  - `media_library.rs`: SQLite-based media indexing
-  - `media_scanner.rs`: File system scanning
-  - `metadata_extractor.rs`: Media file analysis
-  - `thumbnail_generator.rs`: Video thumbnail creation
-
-- **`recording/`**: Combined video/audio recording system
-- **`devices/`**: Device enumeration and capability detection
-- **`audio/`**: Audio processing pipeline with ffmpeg and rodio
-- **`scripting/`**: Rhai-based scripting engine
-- **`hotkeys/`**: Global hotkey registration and handling
-
-### Frontend Structure
-
-- **`App.tsx`**: Main application with tab-based navigation
-- **`components/`**: Feature-specific React components
-  - `Dashboard.tsx`: Main control panel with video preview
-  - `MediaLibrary.tsx`: Media browser and management
-  - `Recording.tsx`: Recording controls and status
-  - `Settings.tsx`: Configuration interface
-- **`components/ui/`**: shadcn/ui component library
-- **`types/`**: TypeScript type definitions for IPC commands
-
-### Key Technical Details
-
-- **Database**: SQLite for media library metadata and settings
-- **Video Processing**: ffmpeg-next for decoding, windows-capture for integration
-- **Audio Processing**: rodio for playback, cpal for device access, symphonia for decoding
-- **Search**: Tantivy for full-text media search
-- **Async Architecture**: Tokio runtime throughout the Rust backend
-- **Error Handling**: anyhow for error propagation with custom error types
-
-### Device Integration Strategy
-
-The application works with existing virtual device drivers:
-- Virtual webcam: OBS Virtual Camera, ManyCam, etc.
-- Virtual audio: VB-CABLE, VoiceMeeter, etc.
-- Physical device enumeration via Windows APIs (DirectShow, WASAPI)
+- **`App.tsx`** — Tab-based layout: Dashboard, Media Library, Recording, Settings
+- **`components/`** — One component per tab (`Dashboard.tsx`, `EnhancedMediaLibrary.tsx`, `Recording.tsx`, `Settings.tsx`, `HotkeyManager.tsx`)
+- **`components/ui/`** — shadcn/ui primitives (Radix UI + Tailwind)
+- **`types/index.ts`** — All TypeScript types for IPC (must match Rust structs)
+- Path alias: `@/` maps to `./src/` (configured in both `tsconfig.json` and `vite.config.ts`)
 
 ### State Management
 
-- **Rust Backend**: Shared state managed through Tauri's app state management
-- **Frontend**: React useState for local component state
-- **Communication**: Tauri commands for all frontend-backend communication
+- **Rust**: Multiple Tauri managed states initialized in `main.rs` setup: `AppState`, `VirtualDeviceState`, hotkey state, scripting state, JSON DSL state, recording state
+- **Frontend**: React `useState` only — no external state management library
 
-### Key Command Categories
+## Key Dependencies
 
-1. **Device Commands**: Initialize, start/stop streaming, get status
-2. **Media Commands**: Load, search, validate media files
-3. **Recording Commands**: Start/stop recording, configure presets
-4. **Hotkey Commands**: Register/unregister global hotkeys
-5. **Scripting Commands**: Execute Rhai scripts with JSON/DSL support
-6. **Settings Commands**: Manage configuration and device preferences
+| Layer | Key Crates/Packages |
+|---|---|
+| Video | `ffmpeg-next`, `windows-capture`, `image` |
+| Audio | `rodio`, `cpal`, `symphonia` |
+| Database | `sqlx` (SQLite, async with Tokio) |
+| Search | `tantivy` |
+| Scripting | `rhai` |
+| Hotkeys | `global-hotkey` |
+| Windows APIs | `windows` crate (DirectShow, WASAPI, Media Foundation) |
+| Frontend UI | `@radix-ui/*`, `tailwindcss`, `lucide-react` |
+
+## Build Requirements
+
+- **FFmpeg**: Required for Rust `ffmpeg-next` crate. CI installs via Chocolatey and sets `FFMPEG_DIR`, `FFMPEG_STATIC=1`, `PKG_CONFIG_PATH` env vars.
+- **Node.js 18+** and **pnpm 9+**
+- **Rust 1.70+** targeting `x86_64-pc-windows-msvc`
+- **Tauri CLI v2**: `cargo install tauri-cli --version "^2.0.0"`
+
+## Testing
+
+- Frontend tests: Vitest + Testing Library + jsdom. Test setup in `src/test/setup.ts` mocks `__TAURI__` global (invoke/listen/emit).
+- Rust tests: `cargo test`. Virtual device module has dedicated `tests.rs`.
+- CI runs both in parallel (`quality-check` job in `.github/workflows/build-deploy.yml`).
 
 ## Development Notes
 
-- The project targets Windows specifically (WASAPI, DirectShow, Media Foundation APIs)
-- All media processing happens in Rust for performance
-- Frontend is purely for UI/UX, no direct media processing
-- Global hotkeys work system-wide, even when app is not focused
-- Scripting engine allows automation of media switching and device control
+- Windows-only: uses WASAPI, DirectShow, Media Foundation APIs throughout the Rust backend
+- All media processing is in Rust — frontend does zero media work
+- Virtual devices require third-party drivers installed (OBS Virtual Camera, VB-CABLE, VoiceMeeter)
+- Vite dev server runs on port 1420 (strict port, required by Tauri)
+- Tauri plugins enabled: `shell`, `dialog`, `fs`

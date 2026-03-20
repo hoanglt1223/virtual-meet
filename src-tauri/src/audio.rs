@@ -200,9 +200,11 @@ impl AudioBuffer {
 }
 
 /// Audio metadata extracted from media files
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AudioMetadata {
+    #[serde(skip)]
     pub duration: Option<Duration>,
+    pub duration_secs: Option<f64>,
     pub channels: u32,
     pub sample_rate: u32,
     pub format: String,
@@ -214,6 +216,7 @@ impl AudioMetadata {
     pub fn new() -> Self {
         Self {
             duration: None,
+            duration_secs: None,
             channels: 0,
             sample_rate: 0,
             format: String::new(),
@@ -387,7 +390,7 @@ impl AudioConverter {
                             input_samples[input_index * channels as usize + ch as usize];
                         let next_val = input_samples[next_index * channels as usize + ch as usize];
 
-                        let interpolated = input_val + fraction * (next_val - input_val);
+                        let interpolated = input_val + fraction as f32 * (next_val - input_val);
                         output_samples[i * channels as usize + ch as usize] = interpolated;
                     }
                 }

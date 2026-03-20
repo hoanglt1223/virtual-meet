@@ -12,8 +12,7 @@ use crate::audio::AudioMetadata;
 use crate::media_library::{LibraryStats, MediaLibraryDatabase, SearchFilter};
 use crate::media_scanner::{MediaScanner, ScanResult, ScannerConfig};
 use crate::virtual_device::VideoInfo;
-use crate::AppState;
-use std::path::PathBuf;
+use crate::commands::AppState;
 use std::sync::Arc;
 
 /// Media file information
@@ -31,7 +30,7 @@ pub struct MediaFileInfo {
 }
 
 /// Media type enumeration
-#[derive(Debug, Serialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum MediaType {
     Video,
     Audio,
@@ -40,7 +39,7 @@ pub enum MediaType {
 }
 
 /// Media metadata container
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MediaMetadata {
     pub video_info: Option<VideoInfo>,
     pub audio_info: Option<AudioMetadata>,
@@ -48,7 +47,7 @@ pub struct MediaMetadata {
 }
 
 /// Format information
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FormatInfo {
     pub format_name: String,
     pub duration: Option<f64>,
@@ -298,7 +297,7 @@ pub async fn set_current_video(
         Ok(result) => {
             if result.is_valid && result.can_decode {
                 info!("Video file validated successfully: {}", video_path);
-                // In a real implementation, you would load this into the pipeline
+                // TODO: Load video into VirtualWebcam streaming pipeline
             }
             Ok(result)
         }
@@ -340,7 +339,7 @@ pub async fn set_current_audio(
         Ok(result) => {
             if result.is_valid && result.can_decode {
                 info!("Audio file validated successfully: {}", audio_path);
-                // In a real implementation, you would load this into the pipeline
+                // TODO: Load audio into VirtualMicrophone streaming pipeline
             }
             Ok(result)
         }
@@ -419,9 +418,8 @@ pub async fn search_media_library(
 
     let start_time = std::time::Instant::now();
 
-    // This is a placeholder implementation
-    // In a real implementation, you would search through the loaded media library
-    let results = Vec::new(); // Placeholder
+    // TODO: Implement full-text search - use search_media_library_enhanced() as reference
+    let results = Vec::new();
 
     Ok(MediaSearchResponse {
         success: true,
@@ -640,8 +638,7 @@ async fn validate_media_file(
     file_path: &str,
     expected_type: MediaType,
 ) -> Result<MediaValidationResult> {
-    // This is a placeholder implementation
-    // In a real implementation, you would use FFmpeg or other libraries to validate the file
+    // TODO: Implement actual media validation using FFmpeg probe
 
     Ok(MediaValidationResult {
         is_valid: true,

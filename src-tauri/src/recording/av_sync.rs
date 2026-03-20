@@ -175,7 +175,8 @@ impl AVSynchronizer {
         // Update current video timestamp
         self.current_video_timestamp = compensated_timestamp;
 
-        // Create synchronized frame
+        // Create synchronized frame (clone for buffer, keep original for fallback)
+        let video_frame_clone = video_frame.clone();
         let sync_frame =
             SynchronizedFrame::new(video_frame, adjusted_timestamp, self.video_frames_processed);
 
@@ -197,7 +198,7 @@ impl AVSynchronizer {
             Ok(av_frame)
         } else {
             // No suitable frame yet, return original
-            av_frame.video_frame = Some(video_frame);
+            av_frame.video_frame = Some(video_frame_clone);
             av_frame.timestamp = compensated_timestamp;
             Ok(av_frame)
         }
@@ -229,7 +230,8 @@ impl AVSynchronizer {
         // Update current audio timestamp
         self.current_audio_timestamp = compensated_timestamp;
 
-        // Create synchronized frame
+        // Create synchronized frame (clone for buffer, keep original for fallback)
+        let audio_frame_clone = audio_frame.clone();
         let sync_frame =
             SynchronizedFrame::new(audio_frame, adjusted_timestamp, self.audio_frames_processed);
 
@@ -251,7 +253,7 @@ impl AVSynchronizer {
             Ok(av_frame)
         } else {
             // No suitable frame yet, return original
-            av_frame.audio_frame = Some(audio_frame);
+            av_frame.audio_frame = Some(audio_frame_clone);
             av_frame.timestamp = compensated_timestamp;
             Ok(av_frame)
         }

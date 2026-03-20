@@ -252,47 +252,38 @@ impl MediaLibraryDatabase {
     /// Search media files with filters
     pub async fn search_media_files(&self, filter: &SearchFilter) -> Result<Vec<DbMediaFile>> {
         let mut query = "SELECT * FROM media_files WHERE 1=1".to_string();
-        let mut bindings: Vec<Box<dyn sqlx::Encode<'_, Sqlite> + sqlx::Type<Sqlite> + Send>> =
-            Vec::new();
 
-        // Add filters
+        // Add filters (using format! for literal values to avoid trait object issues)
         if let Some(query_str) = &filter.query {
-            query.push_str(" AND (filename LIKE ? OR path LIKE ?)");
-            let like_query = format!("%{}%", query_str);
-            bindings.push(Box::new(like_query.clone()));
-            bindings.push(Box::new(like_query));
+            let like_query = query_str.replace('\'', "''");
+            query.push_str(&format!(
+                " AND (filename LIKE '%{}%' OR path LIKE '%{}%')",
+                like_query, like_query
+            ));
         }
 
         if let Some(file_types) = &filter.file_types {
-            let type_placeholders: Vec<String> =
-                file_types.iter().map(|_| "?".to_string()).collect();
-            query.push_str(&format!(
-                " AND file_type IN ({})",
-                type_placeholders.join(",")
-            ));
-            for ft in file_types {
-                bindings.push(Box::new(format!("{:?}", ft)));
-            }
+            let type_list: Vec<String> = file_types
+                .iter()
+                .map(|ft| format!("'{:?}'", ft))
+                .collect();
+            query.push_str(&format!(" AND file_type IN ({})", type_list.join(",")));
         }
 
         if let Some(min_duration) = filter.min_duration {
-            query.push_str(" AND duration >= ?");
-            bindings.push(Box::new(min_duration));
+            query.push_str(&format!(" AND duration >= {}", min_duration));
         }
 
         if let Some(max_duration) = filter.max_duration {
-            query.push_str(" AND duration <= ?");
-            bindings.push(Box::new(max_duration));
+            query.push_str(&format!(" AND duration <= {}", max_duration));
         }
 
         if let Some(min_size) = filter.min_size {
-            query.push_str(" AND size >= ?");
-            bindings.push(Box::new(min_size as i64));
+            query.push_str(&format!(" AND size >= {}", min_size));
         }
 
         if let Some(max_size) = filter.max_size {
-            query.push_str(" AND size <= ?");
-            bindings.push(Box::new(max_size as i64));
+            query.push_str(&format!(" AND size <= {}", max_size));
         }
 
         // Add ordering and limits
@@ -305,11 +296,7 @@ impl MediaLibraryDatabase {
             }
         }
 
-        // Execute query (simplified approach)
-        let mut q = sqlx::query_as::<_, DbMediaFile>(&query);
-
-        // This is a simplified approach - in production, you'd want to handle bindings properly
-        let results = q
+        let results = sqlx::query_as::<_, DbMediaFile>(&query)
             .fetch_all(&self.pool)
             .await
             .map_err(|e| anyhow!("Failed to search media files: {}", e))?;
@@ -368,7 +355,7 @@ impl MediaLibraryDatabase {
 
     /// Get library statistics
     pub async fn get_library_stats(&self) -> Result<LibraryStats> {
-        let stats = sqlx::query!(
+        let stats = sqlx::query(
             r#"
             SELECT
                 COUNT(*) as total_files,
@@ -378,19 +365,20 @@ impl MediaLibraryDatabase {
                 COUNT(CASE WHEN file_type = 'Image' THEN 1 END) as image_files,
                 COUNT(CASE WHEN thumbnail_path IS NOT NULL THEN 1 END) as files_with_thumbnails
             FROM media_files
-            "#
+            "#,
         )
         .fetch_one(&self.pool)
         .await
         .map_err(|e| anyhow!("Failed to get library stats: {}", e))?;
 
+        use sqlx::Row;
         Ok(LibraryStats {
-            total_files: stats.total_files.unwrap_or(0) as usize,
-            total_size: stats.total_size.unwrap_or(0) as u64,
-            video_files: stats.video_files.unwrap_or(0) as usize,
-            audio_files: stats.audio_files.unwrap_or(0) as usize,
-            image_files: stats.image_files.unwrap_or(0) as usize,
-            files_with_thumbnails: stats.files_with_thumbnails.unwrap_or(0) as usize,
+            total_files: stats.try_get::<i64, _>("total_files").unwrap_or(0) as usize,
+            total_size: stats.try_get::<i64, _>("total_size").unwrap_or(0) as u64,
+            video_files: stats.try_get::<i64, _>("video_files").unwrap_or(0) as usize,
+            audio_files: stats.try_get::<i64, _>("audio_files").unwrap_or(0) as usize,
+            image_files: stats.try_get::<i64, _>("image_files").unwrap_or(0) as usize,
+            files_with_thumbnails: stats.try_get::<i64, _>("files_with_thumbnails").unwrap_or(0) as usize,
         })
     }
 
@@ -427,8 +415,9 @@ impl MediaLibraryDatabase {
                     let full_path = self.thumbnail_dir.join(&path);
 
                     // Check if this thumbnail exists in database
+                    use sqlx::Row;
                     let exists = db_thumbnails.iter().any(|row| {
-                        if let Ok(db_path) = row.get::<String, _>("thumbnail_path") {
+                        if let Ok(db_path) = row.try_get::<String, _>("thumbnail_path") {
                             db_path.contains(&path)
                         } else {
                             false
