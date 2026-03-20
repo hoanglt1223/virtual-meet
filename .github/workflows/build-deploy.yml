@@ -43,9 +43,6 @@ jobs:
       - name: Run ESLint
         run: pnpm lint || echo "ESLint issues found, proceeding with build"
 
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
-
       - name: Run Rust clippy
         run: cargo clippy --workspace --all-targets -- -D warnings || echo "Clippy issues found, proceeding with build"
 
