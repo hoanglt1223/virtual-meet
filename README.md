@@ -1,79 +1,116 @@
 # VirtualMeet
 
-An open-source Windows desktop app that simulates a "virtual presence" by sending pre-recorded video & audio into online meeting apps as a virtual webcam and virtual microphone.
+An open-source Windows desktop app that sends pre-recorded video & audio into online meeting apps as a virtual webcam and virtual microphone. Built with Tauri v2 (React + Rust).
 
 ## Features
 
-- **Virtual Webcam**: Play MP4 videos as webcam output with looping and fast switching
-- **Virtual Microphone**: Play MP3/audio files as microphone input with volume control
-- **Recording**: Record combined video + audio to MP4 files
-- **Media Library**: Quick access to media files with thumbnails
-- **Hotkeys & Automation**: Global hotkeys and simple scripting engine
-- **Device Integration**: Works with existing virtual webcam and audio drivers
+- **Virtual Webcam** — Stream video files to virtual camera (OBS Virtual Camera or built-in IMFVirtualCamera on Windows 11)
+- **Virtual Microphone** — Play audio files through a virtual audio cable (VB-CABLE/VoiceMeeter) so meeting apps see it as mic input
+- **Dual Webcam Backend** — OBS mode (ffmpeg CLI) or built-in mode (Windows 11 IMFVirtualCamera, no OBS needed)
+- **Device Auto-Detection** — Automatically detects installed virtual devices and guides setup
+- **Media Library** — Browse, search, and manage media files with thumbnails
+- **Recording** — Record combined video + audio to MP4
+- **Global Hotkeys** — Quick media switching without leaving your meeting
+- **Scripting** — Rhai scripting engine + JSON DSL for automation
 
-## Tech Stack
+## How It Works
 
-- **Shell**: Tauri v2 desktop app
-- **Frontend**: React + Vite + Tailwind CSS + shadcn/ui
-- **Core**: 100% Rust for media processing, playback, and automation
-- **Platform**: Windows (with WASAPI, DirectShow, Media Foundation)
-
-## Development Setup
-
-### Prerequisites
-- Node.js 18+ and pnpm
-- Rust 1.70+ with target `x86_64-pc-windows-msvc`
-- Tauri CLI: `cargo install tauri-cli --version "^2.0.0"`
-
-### Installation
-```bash
-# Install dependencies
-pnpm install
-
-# Start development server
-pnpm tauri dev
-
-# Build for production
-pnpm tauri build
 ```
+Video file ──→ ffmpeg CLI ──→ OBS Virtual Camera ──→ Zoom/Teams sees "webcam"
+                  OR
+Video file ──→ Shared Memory ──→ vcam_source.dll (COM) ──→ Windows Frame Server ──→ "VirtualMeet Camera"
+
+Audio file ──→ cpal playback ──→ VB-CABLE Input ──→ Zoom/Teams sees "microphone"
+```
+
+## Requirements
+
+| Component | Required | Purpose |
+|-----------|----------|---------|
+| Windows 10+ | Yes | OS |
+| FFmpeg | Yes (OBS mode) | Video decoding & streaming |
+| OBS Virtual Camera | OBS mode | Virtual webcam device |
+| Windows 11 build 22000+ | IMF mode | Built-in virtual camera (no OBS) |
+| VB-CABLE or VoiceMeeter | Yes | Virtual audio cable for mic routing |
 
 ## Quick Start
 
-1. Install a virtual webcam driver (e.g., OBS Virtual Camera, ManyCam)
-2. Install a virtual audio driver (e.g., VB-CABLE, VoiceMeeter)
-3. Run `pnpm install` and `pnpm tauri dev`
-4. Configure your virtual devices in settings
-5. Add media files to your library
-6. Select video/audio and start using in meeting apps
+1. Install [FFmpeg](https://ffmpeg.org/download.html) and ensure it's in PATH
+2. Install [OBS Studio](https://obsproject.com/download) (for OBS Virtual Camera) **or** use Windows 11 built-in mode
+3. Install [VB-CABLE](https://vb-audio.com/Cable/) (free virtual audio cable)
+4. Run `pnpm install && pnpm tauri dev`
+5. Go to **Setup** tab — verify all devices are detected
+6. Go to **Dashboard** — select video/audio files and start streaming
+7. In your meeting app, select "OBS Virtual Camera" as webcam and "CABLE Output" as microphone
 
-## Documentation
+## Tech Stack
 
-- **[Development Setup Guide](docs/DEVELOPMENT_SETUP.md)** - Complete environment setup
-- **[Requirements](docs/requirements.md)** - Business and technical requirements
-- **[Architecture](docs/architecture.md)** - Technical architecture overview
-- **[Tauri v2 Migration](docs/TAURI_V2_MIGRATION.md)** - Migration notes from v1 to v2
-- **[Project Structure](docs/)** - Detailed project documentation
+| Layer | Technology |
+|-------|-----------|
+| Shell | Tauri v2 |
+| Frontend | React + Vite + Tailwind CSS + shadcn/ui |
+| Backend | Rust (100% media processing) |
+| Video | ffmpeg CLI (OBS mode) / IMFVirtualCamera (built-in mode) |
+| Audio | cpal + symphonia (decode & playback to selected output device) |
+| COM DLL | `vcam-source` crate — IMFMediaSource for Windows Frame Server |
+| Database | SQLite (sqlx) + Tantivy full-text search |
+| Scripting | Rhai + JSON DSL |
 
-## Project Status
+## Development
 
-🚧 **In Development** - Core infrastructure and architecture planning phase
+### Prerequisites
+- Node.js 18+ and pnpm 9+
+- Rust 1.70+ targeting `x86_64-pc-windows-msvc`
+- FFmpeg CLI in PATH
 
-## Task Management
+### Commands
+```bash
+pnpm install                  # Install frontend deps
+pnpm tauri dev                # Full app dev with hot reload
+pnpm tauri build              # Production build (NSIS installer)
 
-This project uses vibe-kanban for task management. Current development progress is tracked through the kanban board with 11 core tasks covering:
+# Quality checks
+pnpm type-check               # TypeScript type checking
+pnpm lint                     # ESLint
+cargo fmt --all -- --check    # Rust formatting
+cargo clippy --workspace      # Rust linting
+cargo test --workspace        # Rust tests
+npx vitest run                # Frontend tests
 
-1. Set up Development Environment ⏳
-2. Implement Video Pipeline Foundation
-3. Implement Audio Pipeline Foundation
-4. Device Enumeration System
-5. Virtual Device Integration
-6. Combined Recording Pipeline
-7. Tauri Command API Layer
-8. Media Library Scanning
-9. Dashboard UI with Video Preview
-10. Global Hotkey System
-11. JSON/DSL Scripting Engine
+# Build vcam-source COM DLL (for built-in virtual camera)
+cargo build -p vcam-source --release
+# Register (admin): regsvr32 target\release\vcam_source.dll
+```
+
+### Project Structure
+
+```
+src/                          # React frontend
+  components/
+    Dashboard.tsx             # Main control panel (video/audio streaming)
+    setup-panel.tsx           # Device detection & setup guide
+    EnhancedMediaLibrary.tsx  # Media file browser
+    Recording.tsx             # Recording controls
+    Settings.tsx              # App settings
+src-tauri/src/                # Rust backend
+  virtual_device/
+    webcam.rs                 # Dual-backend webcam (OBS + IMF)
+    microphone.rs             # Audio playback to selected output device
+    imf_webcam.rs             # IMFVirtualCamera frame pipeline
+    shared_frame_buffer.rs    # Shared memory for COM DLL communication
+    media_router.rs           # Coordinates video + audio streaming
+  commands.rs                 # Tauri IPC command handlers
+  commands_setup.rs           # Device detection & driver registration
+  audio_decoder.rs            # Symphonia-based audio decoding
+  devices/                    # Audio/video device enumeration
+vcam-source/                  # COM DLL (IMFMediaSource for virtual camera)
+  src/
+    com_server.rs             # DLL exports + IClassFactory
+    media_source.rs           # IMFMediaSource implementation
+    media_stream.rs           # IMFMediaStream (frame delivery)
+    frame_reader.rs           # Reads frames from shared memory
+```
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details
+MIT License — see [LICENSE](LICENSE) file for details
