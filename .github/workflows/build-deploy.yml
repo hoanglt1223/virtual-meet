@@ -10,7 +10,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Quality checks job - runs in parallel with deployment
   quality-check:
     name: Code Quality Checks
     runs-on: windows-latest
@@ -38,11 +37,6 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      # - name: Install dependencies and fix vulnerabilities
-      #   run: |
-      #     pnpm audit --audit-level moderate || echo "Vulnerabilities found, proceeding with build"
-      #     pnpm outdated || echo "Dependencies checked"
-
       - name: Run TypeScript type check
         run: pnpm type-check
 
@@ -53,25 +47,17 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Rust clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings || echo "Clippy issues found, proceeding with build"
+        run: cargo clippy --workspace --all-targets -- -D warnings || echo "Clippy issues found, proceeding with build"
 
       - name: Run Rust tests
-        run: cargo test --verbose || echo "Tests failed, proceeding with build"
+        run: cargo test --workspace --verbose || echo "Tests had failures, proceeding with build"
 
-      - name: Quality check status
-        run: |
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ Quality checks completed successfully!"
-          } else {
-            Write-Host "⚠️ Quality checks completed with warnings"
-          }
-        shell: powershell
+      - name: Run frontend tests
+        run: npx vitest run || echo "Frontend tests had failures, proceeding with build"
 
-  # Deployment job - focuses only on building and packaging
   build-and-deploy:
     name: Build and Deploy
     runs-on: windows-latest
-    # Removed 'needs: quality-check' to run jobs in parallel for faster CI/CD
 
     steps:
       - name: Checkout repository
@@ -97,87 +83,10 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-
-      - name: Cache FFmpeg prebuilt binaries
-        uses: actions/cache@v4
-        id: ffmpeg-cache
-        with:
-          path: C:\ffmpeg
-          key: ffmpeg-6.0-prebuilt-x64-static
-          restore-keys: |
-            ffmpeg-
-
-      - name: Install FFmpeg via Chocolatey (fastest option)
-        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
-        run: |
-          Write-Host "Installing FFmpeg via Chocolatey..."
-          choco install ffmpeg -y --no-progress
-
-          # Create a symlink for our expected location
-          New-Item -ItemType Directory -Force -Path "C:\ffmpeg"
-          $chocoFFmpeg = "${env:ProgramFiles}\ffmpeg\bin"
-          if (Test-Path $chocoFFmpeg) {
-            cmd /c mklink /D "C:\ffmpeg\bin" "$chocoFFmpeg"
-            Write-Host "FFmpeg installed via Chocolatey and linked to C:\ffmpeg"
-          } else {
-            # Fallback to manual download
-            Write-Host "Chocolatey installation failed, falling back to manual download..."
-            $ffmpegUrl = "https://github.com/AnimMouse/ffmpeg-windows-build/releases/download/v6.0/ffmpeg-6.0-win64.zip"
-            $outputPath = "C:\ffmpeg.zip"
-
-            Write-Host "Downloading FFmpeg prebuilt binaries..."
-            Invoke-WebRequest -Uri $ffmpegUrl -OutFile $outputPath
-
-            Write-Host "Extracting FFmpeg..."
-            New-Item -ItemType Directory -Force -Path "C:\ffmpeg"
-            Expand-Archive -Path $outputPath -DestinationPath "C:\ffmpeg" -Force
-
-            Write-Host "Cleaning up..."
-            Remove-Item $outputPath
-          }
-
-          Write-Host "FFmpeg installed to C:\ffmpeg"
-        shell: powershell
-
-      - name: Set up FFmpeg environment
-        run: |
-          # Set environment variables for FFmpeg
-          echo "FFMPEG_DIR=C:\ffmpeg\bin" >> $env:GITHUB_ENV
-          echo "PATH=C:\ffmpeg\bin;$env:PATH" >> $env:GITHUB_ENV
-
-          # Create pkg-config file for FFmpeg to help Rust find it
-          New-Item -ItemType Directory -Force -Path "C:\ffmpeg\lib\pkgconfig"
-
-          # Write pkg-config content using escaped format
-          $pkgConfigContent = "prefix=C:/ffmpeg`n"
-          $pkgConfigContent += "exec_prefix=`${prefix}`n"
-          $pkgConfigContent += "libdir=`${prefix}/lib`n"
-          $pkgConfigContent += "includedir=`${prefix}/include`n"
-          $pkgConfigContent += "`n"
-          $pkgConfigContent += "Name: FFmpeg`n"
-          $pkgConfigContent += "Description: FFmpeg multimedia library`n"
-          $pkgConfigContent += "Version: 6.0`n"
-          $pkgConfigContent += "`n"
-          $pkgConfigContent += "Requires:`n"
-          $pkgConfigContent += "Libs: -L`${libdir} -lavcodec -lavformat -lavutil -lswscale -lswresample`n"
-          $pkgConfigContent += "Cflags: -I`${includedir}`n"
-
-          $pkgConfigContent | Out-File -FilePath "C:\ffmpeg\lib\pkgconfig\libavcodec.pc" -Encoding UTF8 -NoNewline
-          $pkgConfigContent | Out-File -FilePath "C:\ffmpeg\lib\pkgconfig\libavformat.pc" -Encoding UTF8 -NoNewline
-          $pkgConfigContent | Out-File -FilePath "C:\ffmpeg\lib\pkgconfig\libavutil.pc" -Encoding UTF8 -NoNewline
-
-          echo "PKG_CONFIG_PATH=C:\ffmpeg\lib\pkgconfig" >> $env:GITHUB_ENV
-        shell: powershell
-
-      - name: Configure Rust build environment
-        run: |
-          echo "RUSTFLAGS=-C target-feature=+crt-static" >> $env:GITHUB_ENV
-          echo "FFMPEG_STATIC=1" >> $env:GITHUB_ENV
-        shell: powershell
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -185,11 +94,19 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
+      - name: Build vcam-source COM DLL
+        run: cargo build -p vcam-source --release
+
       - name: Build Tauri app
-        run: pnpm tauri:build
+        run: pnpm tauri build
         env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+      - name: Copy vcam DLL to bundle
+        run: |
+          Copy-Item "target\release\vcam_source.dll" "target\release\bundle\nsis\" -Force -ErrorAction SilentlyContinue
+        shell: powershell
 
       - name: Upload artifacts
         if: github.event_name == 'push'
@@ -197,62 +114,39 @@ jobs:
         with:
           name: VirtualMeet-Windows-x64
           path: |
-            src-tauri/target/release/bundle/nsis/VirtualMeet_*.exe
-            src-tauri/target/release/VirtualMeet.exe
+            target/release/bundle/nsis/VirtualMeet_*.exe
+            target/release/bundle/msi/VirtualMeet_*.msi
+            target/release/vcam_source.dll
           retention-days: 30
 
       - name: Create GitHub Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.1.0-${{ github.run_number }}
-          release_name: VirtualMeet v0.1.0 (Build ${{ github.run_number }})
+          name: VirtualMeet v0.1.0 (Build ${{ github.run_number }})
           body: |
             ## VirtualMeet v0.1.0 (Build ${{ github.run_number }})
 
-            ### 🚀 Features
-            - Virtual webcam and microphone streaming
-            - Media library management with search
-            - Recording functionality with multiple quality presets
-            - Global hotkeys for quick media switching
-            - Scripting support for automation
-            - JSON DSL for advanced automation
-            - Device management and configuration
-            - A/V synchronization for recordings
+            ### Features
+            - Virtual webcam streaming (OBS Virtual Camera + built-in IMFVirtualCamera)
+            - Virtual microphone via audio output routing (VB-CABLE/VoiceMeeter)
+            - Media library with search
+            - Recording with quality presets
+            - Global hotkeys and scripting
+            - Auto-detection of virtual devices with setup guide
 
-            ### 📦 Installation
-            Download the `VirtualMeet_*.exe` installer file below and run it to install VirtualMeet on your Windows system.
+            ### Installation
+            Download `VirtualMeet_*_x64-setup.exe` and run it.
+            Optionally register `vcam_source.dll` for built-in virtual camera (no OBS needed).
 
-            ### 🔧 System Requirements
-            - Windows 10 or later
-            - Virtual audio/video device drivers (VB-CABLE, OBS Virtual Camera, etc.)
-
-            ---
-            Build timestamp: ${{ github.event.head_commit.timestamp }}
-            Commit: ${{ github.sha }}
+            ### Requirements
+            - Windows 11 (for built-in virtual camera) or Windows 10+ (with OBS)
+            - VB-CABLE or VoiceMeeter for virtual microphone
+            - FFmpeg (for OBS mode video streaming)
           draft: false
           prerelease: true
-
-      - name: Upload Release Assets
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: src-tauri/target/release/bundle/nsis/VirtualMeet_0.1.0_x64-setup.exe
-          asset_name: VirtualMeet_0.1.0_x64-setup.exe
-          asset_content_type: application/octet-stream
-
-      - name: Build status
-        run: |
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ Build completed successfully!"
-          } else {
-            Write-Host "❌ Build failed"
-            exit 1
-          }
-        shell: powershell
+          files: |
+            target/release/bundle/nsis/VirtualMeet_*_x64-setup.exe
+            target/release/bundle/msi/VirtualMeet_*_x64_en-US.msi
+            target/release/vcam_source.dll
