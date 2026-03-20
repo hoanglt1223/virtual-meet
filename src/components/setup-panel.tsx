@@ -45,7 +45,17 @@ export default function SetupPanel() {
   };
 
   useEffect(() => {
-    detectDevices();
+    const init = async () => {
+      setLoading(true);
+      try {
+        const result = await invoke<VirtualDeviceSetup>("detect_virtual_devices");
+        setSetup(result);
+      } catch (e) {
+        setError(`Detection failed: ${e}`);
+      }
+      setLoading(false);
+    };
+    init();
   }, []);
 
   const statusIcon = (status: string) => {

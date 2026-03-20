@@ -175,7 +175,7 @@ export default function Recording() {
       const outputPath = `${outputFolder}\\${fileName}`;
 
       // Apply preset if selected
-      let config = recordingConfig;
+      const config = recordingConfig;
       if (selectedPreset) {
         const preset = presets.find(p => p.id === selectedPreset);
         if (preset) {

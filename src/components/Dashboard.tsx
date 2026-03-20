@@ -82,14 +82,6 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>("");
 
-  // Load devices on mount
-  useEffect(() => {
-    loadDevices();
-    pollStatus();
-    const interval = setInterval(pollStatus, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
   const loadDevices = async () => {
     try {
       const videoResp = await invoke<DevicesResponse>("list_video_devices");
@@ -125,6 +117,15 @@ export default function Dashboard() {
       // Status polling failures are non-critical
     }
   };
+
+  // Load devices on mount
+  useEffect(() => {
+    void loadDevices();
+    void pollStatus();
+    const interval = setInterval(pollStatus, 3000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Select video file
   const handleSelectVideo = async () => {
