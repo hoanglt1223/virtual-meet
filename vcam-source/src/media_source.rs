@@ -55,10 +55,9 @@ impl VCamMediaSource {
             let stream_impl = VCamMediaStream::new(DEFAULT_WIDTH, DEFAULT_HEIGHT, DEFAULT_FPS)?;
             stream_impl.initialize()?;
 
-            // Try to connect shared memory reader
-            match SharedFrameReader::open() {
-                Ok(reader) => stream_impl.set_frame_reader(reader),
-                Err(_) => {} // No shared memory yet — placeholder frames will be used
+            // Try to connect shared memory reader (placeholder frames used if unavailable)
+            if let Ok(reader) = SharedFrameReader::open() {
+                stream_impl.set_frame_reader(reader);
             }
 
             // Capture stream descriptor before consuming stream_impl

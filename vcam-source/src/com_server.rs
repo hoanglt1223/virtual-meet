@@ -29,6 +29,7 @@ pub fn decrement_object_count() {
 #[implement(IClassFactory)]
 pub struct VCamClassFactory;
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl IClassFactory_Impl for VCamClassFactory {
     fn CreateInstance(
         &self,
@@ -79,6 +80,9 @@ impl IClassFactory_Impl for VCamClassFactory {
 // ============================================================================
 
 /// Called by COM to get a class factory for our CLSID
+///
+/// # Safety
+/// Raw pointers must be valid COM interface pointers allocated by the caller.
 #[no_mangle]
 pub unsafe extern "system" fn DllGetClassObject(
     rclsid: *const GUID,
@@ -106,6 +110,9 @@ pub unsafe extern "system" fn DllGetClassObject(
 }
 
 /// Called by COM to check if the DLL can be unloaded
+///
+/// # Safety
+/// Called by COM runtime; no pointer arguments.
 #[no_mangle]
 pub unsafe extern "system" fn DllCanUnloadNow() -> HRESULT {
     if OBJECT_COUNT.load(Ordering::Relaxed) == 0 && LOCK_COUNT.load(Ordering::Relaxed) == 0 {
@@ -116,6 +123,9 @@ pub unsafe extern "system" fn DllCanUnloadNow() -> HRESULT {
 }
 
 /// Register COM server in the registry (called by regsvr32)
+///
+/// # Safety
+/// Called by regsvr32; no pointer arguments.
 #[no_mangle]
 pub unsafe extern "system" fn DllRegisterServer() -> HRESULT {
     match register_server() {
@@ -125,6 +135,9 @@ pub unsafe extern "system" fn DllRegisterServer() -> HRESULT {
 }
 
 /// Unregister COM server from the registry (called by regsvr32 /u)
+///
+/// # Safety
+/// Called by regsvr32; no pointer arguments.
 #[no_mangle]
 pub unsafe extern "system" fn DllUnregisterServer() -> HRESULT {
     match unregister_server() {

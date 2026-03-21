@@ -60,7 +60,7 @@ impl VCamMediaStream {
             media_type.SetUINT32(&MF_MT_ALL_SAMPLES_INDEPENDENT, 1)?;
             media_type.SetUINT32(
                 &MF_MT_DEFAULT_STRIDE,
-                (self.width * 4) as u32,
+                self.width * 4,
             )?;
 
             // Create stream descriptor with one media type
