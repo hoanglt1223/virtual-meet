@@ -14,9 +14,10 @@ use tracing::{error, info, warn};
 use windows::core::GUID;
 use windows::Win32::Media::KernelStreaming::KSCATEGORY_VIDEO_CAMERA;
 use windows::Win32::Media::MediaFoundation::{
-    MFCreateVirtualCamera, IMFVirtualCamera,
+    MFCreateVirtualCamera, MFStartup, IMFVirtualCamera,
     MFVirtualCameraAccess_CurrentUser, MFVirtualCameraLifetime_Session,
     MFVirtualCameraType_SoftwareCameraSource,
+    MF_VERSION, MFSTARTUP_NOSOCKET,
 };
 
 use super::shared_frame_buffer::SharedFrameWriter;
@@ -120,6 +121,10 @@ impl ImfWebcam {
         );
 
         info!("Creating virtual camera with CLSID: {}", clsid_str);
+
+        // Ensure Media Foundation is initialized in this process
+        unsafe { MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET) }
+            .map_err(|e| anyhow!("MFStartup failed: {}", e))?;
 
         let vcam = unsafe {
             MFCreateVirtualCamera(

@@ -7,6 +7,8 @@ use windows::core::*;
 use windows::Win32::Foundation::*;
 use windows::Win32::System::Com::*;
 
+use windows::Win32::Media::MediaFoundation::{MFStartup, MF_VERSION, MFSTARTUP_NOSOCKET};
+
 use crate::media_source::VCamMediaSource;
 
 /// Our virtual camera source CLSID — must match the Tauri app's constant
@@ -47,6 +49,9 @@ impl IClassFactory_Impl for VCamClassFactory {
             }
             *ppvobject = std::ptr::null_mut();
         }
+
+        // Ensure Media Foundation is initialized in this process
+        unsafe { MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET)? };
 
         // Create and initialize media source
         let source = VCamMediaSource::new()?;
