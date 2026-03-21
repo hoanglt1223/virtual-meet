@@ -9,7 +9,18 @@ use windows::Win32::System::Com::*;
 
 use windows::Win32::Media::MediaFoundation::{MFStartup, MF_VERSION, MFSTARTUP_NOSOCKET};
 
-use crate::media_source::VCamMediaSource;
+use crate::media_source::VCamActivate;
+
+/// Debug log to a temp file (DLL runs in Frame Server — no console)
+pub fn debug_log(msg: &str) {
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true).append(true)
+        .open(r"C:\temp\vcam_debug.log")
+    {
+        let _ = writeln!(f, "[vcam] {}", msg);
+    }
+}
 
 /// Our virtual camera source CLSID — must match the Tauri app's constant
 /// {B4A7E55D-1E7C-4C90-B74A-6D9E3F8A2B10}
@@ -18,6 +29,26 @@ pub const CLSID_VCAM_SOURCE: GUID = GUID::from_u128(0xB4A7E55D_1E7C_4C90_B74A_6D
 /// Track outstanding COM object count for DllCanUnloadNow
 static OBJECT_COUNT: AtomicU32 = AtomicU32::new(0);
 static LOCK_COUNT: AtomicU32 = AtomicU32::new(0);
+
+/// Store the DLL's own module handle (set in DllMain)
+static mut DLL_HMODULE: isize = 0;
+
+/// DllMain — called when the DLL is loaded/unloaded. Stores the module handle.
+///
+/// # Safety
+/// Called by the Windows loader.
+#[no_mangle]
+pub unsafe extern "system" fn DllMain(
+    hinstance: windows::Win32::Foundation::HMODULE,
+    reason: u32,
+    _reserved: *mut core::ffi::c_void,
+) -> BOOL {
+    if reason == 1 {
+        // DLL_PROCESS_ATTACH
+        DLL_HMODULE = hinstance.0;
+    }
+    BOOL(1)
+}
 
 pub fn increment_object_count() {
     OBJECT_COUNT.fetch_add(1, Ordering::Relaxed);
@@ -50,19 +81,46 @@ impl IClassFactory_Impl for VCamClassFactory {
             *ppvobject = std::ptr::null_mut();
         }
 
-        // Ensure Media Foundation is initialized in this process
-        unsafe { MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET)? };
+        debug_log("CreateInstance called");
 
-        // Create and initialize media source
-        let source = VCamMediaSource::new()?;
-        source.initialize()?;
+        // Ensure Media Foundation is initialized in this process
+        match unsafe { MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET) } {
+            Ok(()) => debug_log("MFStartup OK"),
+            Err(e) => {
+                debug_log(&format!("MFStartup FAILED: {}", e));
+                return Err(e);
+            }
+        }
+
+        // Create and initialize activate object (IMFActivate)
+        let activate = match VCamActivate::new() {
+            Ok(s) => { debug_log("VCamActivate::new OK"); s }
+            Err(e) => {
+                debug_log(&format!("VCamActivate::new FAILED: {}", e));
+                return Err(e);
+            }
+        };
+        match activate.initialize() {
+            Ok(()) => debug_log("VCamActivate::initialize OK"),
+            Err(e) => {
+                debug_log(&format!("VCamActivate::initialize FAILED: {}", e));
+                return Err(e);
+            }
+        }
+        let source = activate;
 
         increment_object_count();
 
         // Query the requested interface
         let unknown: IUnknown = source.into();
         unsafe {
+            let requested_iid = &*riid;
+            debug_log(&format!("QI for IID: {:08X}-{:04X}-{:04X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
+                requested_iid.data1, requested_iid.data2, requested_iid.data3,
+                requested_iid.data4[0], requested_iid.data4[1], requested_iid.data4[2], requested_iid.data4[3],
+                requested_iid.data4[4], requested_iid.data4[5], requested_iid.data4[6], requested_iid.data4[7]));
             let hr = unknown.query(riid, ppvobject);
+            debug_log(&format!("QI result: {:?}", hr));
             if hr.is_err() {
                 decrement_object_count();
             }
@@ -94,6 +152,8 @@ pub unsafe extern "system" fn DllGetClassObject(
     riid: *const GUID,
     ppv: *mut *mut core::ffi::c_void,
 ) -> HRESULT {
+    debug_log("DllGetClassObject called");
+
     if ppv.is_null() {
         return E_POINTER;
     }
@@ -105,9 +165,11 @@ pub unsafe extern "system" fn DllGetClassObject(
 
     let clsid = &*rclsid;
     if *clsid != CLSID_VCAM_SOURCE {
+        debug_log("CLSID mismatch");
         return CLASS_E_CLASSNOTAVAILABLE;
     }
 
+    debug_log("CLSID matched, creating factory");
     let factory = VCamClassFactory;
     let unknown: IUnknown = factory.into();
     let hr = unknown.query(riid, ppv);
@@ -151,12 +213,13 @@ pub unsafe extern "system" fn DllUnregisterServer() -> HRESULT {
     }
 }
 
-/// Get the path to this DLL
+/// Get the path to this DLL (uses handle stored by DllMain)
 fn get_module_path() -> Result<String> {
     let mut buf = vec![0u16; 260];
     unsafe {
+        let hmodule = windows::Win32::Foundation::HMODULE(DLL_HMODULE);
         let len = windows::Win32::System::LibraryLoader::GetModuleFileNameW(
-            windows::Win32::Foundation::HMODULE(0),
+            hmodule,
             &mut buf,
         );
         if len == 0 {
