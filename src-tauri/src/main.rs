@@ -29,8 +29,7 @@ mod virtual_device;
 use tauri::Manager;
 use tracing_subscriber;
 
-#[tokio::main]
-async fn main() {
+fn main() {
     tracing_subscriber::fmt::init();
 
     tauri::Builder::default()
@@ -46,9 +45,9 @@ async fn main() {
             let virtual_device_state = commands::virtual_devices::VirtualDeviceState::default();
             app.manage(virtual_device_state);
 
-            // Initialize hotkey state
+            // Initialize hotkey state (wrapped in Mutex as commands expect)
             let hotkey_state = commands_hotkeys::init_hotkey_system();
-            app.manage(hotkey_state);
+            app.manage(std::sync::Mutex::new(hotkey_state));
 
             // Register default global hotkeys
             let app_handle_for_hotkeys = app.handle().clone();
@@ -71,9 +70,9 @@ async fn main() {
                 tracing::info!("Global hotkey listener setup successfully");
             }
 
-            // Initialize scripting state
+            // Initialize scripting state (wrapped in Mutex as commands expect)
             let scripting_state = commands_scripting::init_scripting_system();
-            app.manage(scripting_state);
+            app.manage(std::sync::Mutex::new(scripting_state));
 
             // Initialize JSON DSL state
             let json_dsl_state = commands_json_dsl::create_json_dsl_state();

@@ -902,7 +902,7 @@ pub fn setup_global_hotkey_listener(app: AppHandle) -> Result<()> {
     info!("Setting up global hotkey event listener");
 
     // TODO: Implement global hotkey event listener using global-hotkey crate
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         info!("Global hotkey event listener started");
     });
 
