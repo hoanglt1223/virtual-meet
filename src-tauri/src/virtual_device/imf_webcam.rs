@@ -1,6 +1,7 @@
 //! IMFVirtualCamera backend
-//! Decodes video frames via ffmpeg CLI and writes to shared memory for the COM media source.
-//! Calls MFCreateVirtualCamera to register the virtual camera with Windows.
+//! Decodes video frames via ffmpeg CLI, writes to shared memory, and creates
+//! a Windows virtual camera device via MFCreateVirtualCamera so that apps
+//! like Google Meet / Zoom can see "VirtualMeet Camera" in their device list.
 
 use anyhow::{anyhow, Result};
 use std::process::{Child, Command, Stdio};
@@ -10,13 +11,22 @@ use std::thread;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
+use windows::core::GUID;
+use windows::Win32::Media::KernelStreaming::KSCATEGORY_VIDEO_CAMERA;
+use windows::Win32::Media::MediaFoundation::{
+    MFCreateVirtualCamera, IMFVirtualCamera,
+    MFVirtualCameraAccess_CurrentUser, MFVirtualCameraLifetime_Session,
+    MFVirtualCameraType_SoftwareCameraSource,
+};
 
 use super::shared_frame_buffer::SharedFrameWriter;
 use super::webcam::VideoInfo;
 
-/// CLSID for our custom COM media source (must match the registered DLL).
-/// {B4A7E55D-1E7C-4C90-B74A-6D9E3F8A2B10}
-const VCAM_SOURCE_CLSID: &str = "{B4A7E55D-1E7C-4C90-B74A-6D9E3F8A2B10}";
+/// CLSID for our custom COM media source (must match vcam-source crate).
+const VCAM_SOURCE_CLSID: GUID = GUID::from_u128(0xB4A7E55D_1E7C_4C90_B74A_6D9E3F8A2B10);
+
+/// Friendly name shown in camera device lists
+const VCAM_FRIENDLY_NAME: &str = "VirtualMeet Camera";
 
 /// IMF-based virtual webcam
 pub struct ImfWebcam {
@@ -28,7 +38,13 @@ pub struct ImfWebcam {
     frame_writer: Arc<StdMutex<Option<SharedFrameWriter>>>,
     ffmpeg_process: Arc<Mutex<Option<Child>>>,
     decode_thread: Arc<Mutex<Option<thread::JoinHandle<()>>>>,
+    /// The Windows virtual camera handle — kept alive while streaming
+    virtual_camera: Arc<StdMutex<Option<IMFVirtualCamera>>>,
 }
+
+// SAFETY: IMFVirtualCamera is COM and ref-counted; we only access it behind a Mutex.
+unsafe impl Send for ImfWebcam {}
+unsafe impl Sync for ImfWebcam {}
 
 impl ImfWebcam {
     pub fn new() -> Self {
@@ -40,11 +56,11 @@ impl ImfWebcam {
             frame_writer: Arc::new(StdMutex::new(None)),
             ffmpeg_process: Arc::new(Mutex::new(None)),
             decode_thread: Arc::new(Mutex::new(None)),
+            virtual_camera: Arc::new(StdMutex::new(None)),
         }
     }
 
-    /// Check whether IMFVirtualCamera is available on this system.
-    /// Requires Windows 11 build 22000+.
+    /// Check whether IMFVirtualCamera is available on this system (Win11 22000+).
     pub fn is_available() -> bool {
         let output = Command::new("cmd")
             .args(["/c", "ver"])
@@ -69,10 +85,17 @@ impl ImfWebcam {
 
     /// Check whether the COM media source DLL is registered in the Windows registry.
     pub fn is_com_source_registered() -> bool {
-        let key = format!(
-            "HKLM\\SOFTWARE\\Classes\\CLSID\\{}",
-            VCAM_SOURCE_CLSID
+        let clsid_str = format!(
+            "{{{:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}}}",
+            VCAM_SOURCE_CLSID.data1,
+            VCAM_SOURCE_CLSID.data2,
+            VCAM_SOURCE_CLSID.data3,
+            VCAM_SOURCE_CLSID.data4[0], VCAM_SOURCE_CLSID.data4[1],
+            VCAM_SOURCE_CLSID.data4[2], VCAM_SOURCE_CLSID.data4[3],
+            VCAM_SOURCE_CLSID.data4[4], VCAM_SOURCE_CLSID.data4[5],
+            VCAM_SOURCE_CLSID.data4[6], VCAM_SOURCE_CLSID.data4[7],
         );
+        let key = format!("HKLM\\SOFTWARE\\Classes\\CLSID\\{}", clsid_str);
         Command::new("reg")
             .args(["query", &key])
             .stdout(Stdio::null())
@@ -80,6 +103,57 @@ impl ImfWebcam {
             .status()
             .map(|s| s.success())
             .unwrap_or(false)
+    }
+
+    /// Create the Windows virtual camera device via MFCreateVirtualCamera.
+    /// This makes "VirtualMeet Camera" appear in apps like Google Meet.
+    fn create_virtual_camera() -> Result<IMFVirtualCamera> {
+        let clsid_str = format!(
+            "{{{:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}}}",
+            VCAM_SOURCE_CLSID.data1,
+            VCAM_SOURCE_CLSID.data2,
+            VCAM_SOURCE_CLSID.data3,
+            VCAM_SOURCE_CLSID.data4[0], VCAM_SOURCE_CLSID.data4[1],
+            VCAM_SOURCE_CLSID.data4[2], VCAM_SOURCE_CLSID.data4[3],
+            VCAM_SOURCE_CLSID.data4[4], VCAM_SOURCE_CLSID.data4[5],
+            VCAM_SOURCE_CLSID.data4[6], VCAM_SOURCE_CLSID.data4[7],
+        );
+
+        info!("Creating virtual camera with CLSID: {}", clsid_str);
+
+        let vcam = unsafe {
+            MFCreateVirtualCamera(
+                MFVirtualCameraType_SoftwareCameraSource,
+                MFVirtualCameraLifetime_Session,
+                MFVirtualCameraAccess_CurrentUser,
+                &windows::core::HSTRING::from(VCAM_FRIENDLY_NAME),
+                &windows::core::HSTRING::from(&clsid_str),
+                Some(&[KSCATEGORY_VIDEO_CAMERA]),
+            )
+        }
+        .map_err(|e| anyhow!("MFCreateVirtualCamera failed: {}", e))?;
+
+        info!("Virtual camera device created: {}", VCAM_FRIENDLY_NAME);
+
+        // Start the virtual camera so it appears in device lists
+        unsafe { vcam.Start(None) }
+            .map_err(|e| anyhow!("IMFVirtualCamera::Start failed: {}", e))?;
+
+        info!("Virtual camera started and visible to applications");
+        Ok(vcam)
+    }
+
+    /// Stop and remove the virtual camera device.
+    fn destroy_virtual_camera(vcam: &IMFVirtualCamera) {
+        unsafe {
+            if let Err(e) = vcam.Stop() {
+                warn!("IMFVirtualCamera::Stop failed: {}", e);
+            }
+            if let Err(e) = vcam.Remove() {
+                warn!("IMFVirtualCamera::Remove failed: {}", e);
+            }
+        }
+        info!("Virtual camera device removed");
     }
 
     /// Probe video dimensions and frame-rate with ffprobe.
@@ -130,6 +204,7 @@ impl ImfWebcam {
     }
 
     /// Start decoding video and writing frames to shared memory.
+    /// Also creates the virtual camera device so it shows up in Google Meet etc.
     pub async fn start_streaming(&self, video_path: &str) -> Result<()> {
         if self.is_active.load(Ordering::Relaxed) {
             return Err(anyhow!("IMF webcam already streaming"));
@@ -139,15 +214,22 @@ impl ImfWebcam {
             return Err(anyhow!("Video file not found: {}", video_path));
         }
 
-        let info = Self::probe_video(video_path).await?;
-        info!(
-            "IMF webcam: {}x{} @ {:.1} fps",
-            info.width, info.height, info.frame_rate
-        );
+        if !Self::is_com_source_registered() {
+            return Err(anyhow!(
+                "vcam_source.dll is not registered. Run as admin: regsvr32 target\\release\\vcam_source.dll"
+            ));
+        }
 
-        // Create shared memory writer
+        let info = Self::probe_video(video_path).await?;
+        info!("IMF webcam: {}x{} @ {:.1} fps", info.width, info.height, info.frame_rate);
+
+        // Create shared memory writer FIRST (so the COM DLL can find it)
         let writer = SharedFrameWriter::create(info.width, info.height)?;
         *self.frame_writer.lock().unwrap() = Some(writer);
+
+        // Create and start the Windows virtual camera device
+        let vcam = Self::create_virtual_camera()?;
+        *self.virtual_camera.lock().unwrap() = Some(vcam);
 
         *self.video_info.lock().await = Some(info.clone());
         *self.current_source.lock().await = Some(video_path.to_string());
@@ -155,7 +237,7 @@ impl ImfWebcam {
         self.should_stop.store(false, Ordering::Relaxed);
         self.is_active.store(true, Ordering::Relaxed);
 
-        // Spawn the decode thread; it owns the ffmpeg child process
+        // Spawn the decode thread
         let video_path_owned = video_path.to_string();
         let width = info.width;
         let height = info.height;
@@ -166,13 +248,8 @@ impl ImfWebcam {
 
         let handle = thread::spawn(move || {
             Self::decode_loop(
-                video_path_owned,
-                width,
-                height,
-                frame_rate,
-                should_stop,
-                frame_writer,
-                is_active,
+                video_path_owned, width, height, frame_rate,
+                should_stop, frame_writer, is_active,
             );
         });
 
@@ -202,7 +279,6 @@ impl ImfWebcam {
                 break;
             }
 
-            // Each iteration spawns a fresh ffmpeg that loops the file
             let mut child = match Command::new("ffmpeg")
                 .args([
                     "-re",
@@ -250,11 +326,7 @@ impl ImfWebcam {
                         if let Ok(lock) = frame_writer.lock() {
                             if let Some(ref writer) = *lock {
                                 if let Err(e) = writer.write_frame(
-                                    width,
-                                    height,
-                                    &buf,
-                                    frame_number,
-                                    timestamp,
+                                    width, height, &buf, frame_number, timestamp,
                                 ) {
                                     error!("IMF: write_frame failed: {}", e);
                                 }
@@ -282,7 +354,6 @@ impl ImfWebcam {
                 break;
             }
 
-            // Short pause before restarting
             thread::sleep(Duration::from_millis(100));
         }
 
@@ -298,7 +369,7 @@ impl ImfWebcam {
         info!("Stopping IMF webcam");
         self.should_stop.store(true, Ordering::Relaxed);
 
-        // Kill any separately tracked ffmpeg process (belt-and-suspenders)
+        // Kill any separately tracked ffmpeg process
         if let Some(mut child) = self.ffmpeg_process.lock().await.take() {
             let _ = child.kill();
             let _ = child.wait();
@@ -309,6 +380,14 @@ impl ImfWebcam {
             let _ = handle.join();
         }
 
+        // Stop and remove the virtual camera device
+        if let Ok(mut guard) = self.virtual_camera.lock() {
+            if let Some(ref vcam) = *guard {
+                Self::destroy_virtual_camera(vcam);
+            }
+            *guard = None;
+        }
+
         // Release shared memory
         *self.frame_writer.lock().unwrap() = None;
         *self.current_source.lock().await = None;
@@ -317,10 +396,6 @@ impl ImfWebcam {
 
         info!("IMF webcam stopped");
         Ok(())
-    }
-
-    pub fn is_active_sync(&self) -> bool {
-        self.is_active.load(Ordering::Relaxed)
     }
 
     pub async fn is_active(&self) -> bool {
@@ -339,5 +414,15 @@ impl ImfWebcam {
 impl Default for ImfWebcam {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Drop for ImfWebcam {
+    fn drop(&mut self) {
+        if let Ok(guard) = self.virtual_camera.lock() {
+            if let Some(ref vcam) = *guard {
+                Self::destroy_virtual_camera(vcam);
+            }
+        }
     }
 }
