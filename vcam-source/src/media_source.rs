@@ -5,6 +5,8 @@ use std::sync::Mutex;
 use windows::core::*;
 use windows::Win32::Foundation::*;
 use windows::Win32::Media::KernelStreaming::{KSIDENTIFIER, IKsControl, IKsControl_Impl, KSCAMERAPROFILE_Legacy};
+use windows::Win32::Media::MediaFoundation::IMFGetService;
+use windows::Win32::Media::MediaFoundation::IMFGetService_Impl;
 use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
 
@@ -296,7 +298,7 @@ impl IMFAttributes_Impl for VCamActivate {
 // VCamMediaSource — the actual media source, created by VCamActivate
 // ========================================================================
 
-#[implement(IMFMediaSourceEx, IKsControl)]
+#[implement(IMFMediaSourceEx, IMFGetService, IKsControl)]
 pub struct VCamMediaSource {
     event_queue: Mutex<Option<IMFMediaEventQueue>>,
     presentation_descriptor: Mutex<Option<IMFPresentationDescriptor>>,
@@ -480,6 +482,12 @@ impl IMFMediaEventGenerator_Impl for VCamMediaSource {
         let q = self.event_queue.lock().unwrap();
         if let Some(ref q) = *q { unsafe { q.QueueEventParamVar(met, ext, hr, val) } }
         else { Err(Error::new(E_FAIL, "".into())) }
+    }
+}
+
+impl IMFGetService_Impl for VCamMediaSource {
+    fn GetService(&self, _guidservice: *const GUID, _riid: *const GUID, _ppvobject: *mut *mut core::ffi::c_void) -> Result<()> {
+        Err(Error::new(MF_E_UNSUPPORTED_SERVICE, "".into()))
     }
 }
 

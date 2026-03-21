@@ -12,7 +12,6 @@ use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 use windows::core::GUID;
-use windows::Win32::Media::KernelStreaming::KSCATEGORY_VIDEO_CAMERA;
 use windows::Win32::Media::MediaFoundation::{
     MFCreateVirtualCamera, MFStartup, IMFVirtualCamera,
     MFVirtualCameraAccess_CurrentUser, MFVirtualCameraLifetime_Session,
@@ -133,7 +132,7 @@ impl ImfWebcam {
                 MFVirtualCameraAccess_CurrentUser,
                 &windows::core::HSTRING::from(VCAM_FRIENDLY_NAME),
                 &windows::core::HSTRING::from(&clsid_str),
-                Some(&[KSCATEGORY_VIDEO_CAMERA]),
+                None, // No categories — matches working VCamSample pattern
             )
         }
         .map_err(|e| anyhow!("MFCreateVirtualCamera failed: {}", e))?;

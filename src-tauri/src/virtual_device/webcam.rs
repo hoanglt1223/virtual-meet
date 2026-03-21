@@ -109,13 +109,20 @@ impl VirtualWebcam {
     // Public streaming API — dispatches to the selected backend
     // ------------------------------------------------------------------
 
-    /// Start streaming — delegates to OBS or IMF backend based on current mode.
+    /// Start streaming — tries IMF first, falls back to OBS if IMF fails.
     pub async fn start_streaming(&self, video_path: &str) -> Result<()> {
         match self.mode {
             WebcamMode::Obs => self.start_streaming_obs(video_path).await,
             WebcamMode::Imf => {
                 let imf = self.imf_webcam.lock().await;
-                imf.start_streaming(video_path).await
+                match imf.start_streaming(video_path).await {
+                    Ok(()) => Ok(()),
+                    Err(e) => {
+                        info!("IMF mode failed ({}), falling back to OBS mode", e);
+                        drop(imf); // release lock
+                        self.start_streaming_obs(video_path).await
+                    }
+                }
             }
         }
     }
